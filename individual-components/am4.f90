@@ -1,33 +1,25 @@
 !> @brief Reads in data from AM4 history files.
 module am4
-use fms_mod, only: domain2d, error_mesg, fatal, mpp_get_compute_domain, &
-                   mpp_get_io_domain, mpp_npes
-use fms2_io, only: close_file, FmsNetcdfDomainFile_t, get_variable_attribute, &
-                   open_file, read_data, register_axis
+use fms_mod, only: check_nml_error, error_mesg, fatal, input_nml_file, mpp_npes
+use fms2_io_mod, only: close_file, FmsNetcdfDomainFile_t, FmsNetcdfFile_t, &
+                       get_dimension_size, get_variable_attribute, get_variable_size, &
+                       open_file, read_data, register_axis
 use mo_rte_kind, only: wp
+use mpp_domains_mod, only: domain2d, mpp_define_mosaic, mpp_define_io_domain, &
+                           mpp_get_compute_domain, mpp_get_io_domain
 
 implicit none
 private
 
 
 type, public :: Atmosphere_t
-  type(domain2d) :: domain !< 2d domain.
-  integer :: num_times !< Number of times.
-  real(kind=wp), dimension(:), allocatable :: time !< Time [hours or days or months].
-  character(len=128) :: time_units !< Time units (i.e. days since 0000-00-00 00:00:00)
-  character(len=128) :: calendar
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_temperature !< Surface temperature [K] (block_size, num_blocks, time).
-  logical :: clear !< Flag for clear-sky only runs.
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
+  character(len=128) :: calendar !< Calendar type for the time axis.
   real(kind=wp), dimension(:,:,:), allocatable :: daylight_fraction !< Daylight correction factor (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
+  type(domain2d) :: domain !< 2d domain.
+  real(kind=wp), dimension(:), allocatable :: earth_sun_distance_fraction !< Earth sun distance fraction.
+  real(kind=wp), dimension(:,:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks, time).
   real(kind=wp), dimension(:), allocatable :: latitude !< Latitude [degrees].
+  real(kind=wp), dimension(:), allocatable :: layer !< Pressure [mb].
   real(kind=wp), dimension(:,:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (block_size, layer, num_blocks, time).
   real(kind=wp), dimension(:,:,:,:), allocatable :: layer_temperature !< Temperature [K] (block_size, layer, num_blocks, time).
   real(kind=wp), dimension(:,:,:,:), allocatable :: layer_thickness !< Thickness [m] (block_size, layer, num_blocks, time).
@@ -35,24 +27,27 @@ type, public :: Atmosphere_t
   real(kind=wp), dimension(:,:,:,:), allocatable :: level_pressure !< Pressure [Pa] (blocks_size level, num_blocks, time).
   real(kind=wp), dimension(:,:,:,:), allocatable :: level_temperature !< Temperature [K] (block_size, level, num_blocks, time).
   real(kind=wp), dimension(:), allocatable :: longitude !< Longitude [degrees].
-  integer, dimension(:), allocatable :: molecules !< Molecule ids (molecule).
-  logical :: monthly !< Flag for monthly-mean data.
-  integer :: num_columns !< Number of columns.
   integer :: num_layers !< Number of layers.
   integer :: num_levels !< Number of levels.
-  integer :: num_molecules !< Number of molecules.
-  integer :: num_subcolumns !< Number of sub-columns.
+  integer :: num_times !< Number of times.
   real(kind=wp), dimension(:,:,:,:,:), allocatable :: ppmv !< Molecular abundancee (block_size, level, num_blocks, time, molecule).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
+  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
+  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
   real(kind=wp), dimension(:,:,:), allocatable :: solar_zenith_angle !< Solar zenith angle [degrees] (block_size, num_blocks, time).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
+  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
+  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
   real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (block_size, num_blocks, time).
   real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (block_size, num_blocks, time).
   real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (block_size, num_blocks, time).
   real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_direct_uv !< Surface albedo for ultraviolet direct beam (block_size, num_blocks, time).
+  real(kind=wp), dimension(:,:,:), allocatable :: surface_temperature !< Surface temperature [K] (block_size, num_blocks, time).
+  real(kind=wp), dimension(:), allocatable :: time !< Time [hours or days or months].
+  character(len=128) :: time_units !< Time units (i.e. days since 0000-00-00 00:00:00)
   real(kind=wp), dimension(:), allocatable :: total_solar_irradiance !< Total solar irradiance [W m-2] (time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: zenith_angle !< Cosine of approximate zenith angles [degrees] (3, block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: zenith_weight !< Approximate zenith angle weights (3, block_size, num_blocks, time).
-  real(kind=wp), dimension(:), allocatable :: earth_sun_distance_fraction !< Earth sun distance fraction.
-  real(kind=wp), dimension(:,:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks, time).
 end type Atmosphere_t
 
 public :: create_atmosphere
@@ -61,7 +56,8 @@ integer, parameter, public :: h2o = 1
 integer, parameter, public :: o3 = 2
 
 character(len=256) :: atmos_path = "none"
-namelist /am4_nml/ atmos_path
+logical :: clearsky = .false.
+namelist /am4_nml/ atmos_path, clearsky
 
 
 contains
@@ -74,14 +70,18 @@ subroutine create_atmosphere(atm)
 
   character(len=256) :: attr
   integer, dimension(4) :: dim_sizes
-  integer :: i, nx, ny
+  integer :: err, i, ierr, nx, ny
+  real, dimension(:,:), allocatable :: buffer2d
   type(FmsNetcdfDomainFile_t) :: dataset
   type(FmsNetcdfFile_t) :: tilefile
   type(domain2d), pointer :: io_domain
 
+  read(input_nml_file, am4_nml, iostat=ierr)
+  err = check_nml_error(ierr, "am4_nml")
+
   !Open the *.tile1.nc file and get the longitude and latitude sizes.
   i = len_trim(atmos_path)
-  if (.not. open(tilefile, atmos_path(:i - 9)//".tile1.nc", "read")) then
+  if (.not. open_file(tilefile, atmos_path(:i - 3)//".tile1.nc", "read")) then
     call error_mesg("create_atmosphere", &
                     "cannot find the "//trim(atmos_path)//" tile files.", fatal)
   endif
@@ -90,7 +90,7 @@ subroutine create_atmosphere(atm)
   call close_file(tilefile)
 
   !Create a 2d domain.
-  call create_atmosphere_domain(num_lon, num_lat, atm%domain)
+  call create_atmosphere_domain(nx, ny, atm%domain)
 
   !Open dataset.
   if (.not. open_file(dataset, atmos_path, "read", atm%domain)) then
@@ -109,11 +109,25 @@ subroutine create_atmosphere(atm)
   call register_axis(dataset, "grid_xt", "x")
   call register_axis(dataset, "grid_yt", "y")
 
+  !Read in axes so they can be passed to diag_manager.
+  call get_dimension_size(dataset, "grid_xt", i)
+  allocate(atm%longitude(i))
+  call read_data(dataset, "grid_xt", atm%longitude)
+  call get_dimension_size(dataset, "grid_yt", i)
+  allocate(atm%latitude(i))
+  call read_data(dataset, "grid_yt", atm%latitude)
+  call get_dimension_size(dataset, "pfull", i)
+  allocate(atm%layer(i))
+  call read_data(dataset, "pfull", atm%layer)
+  call get_dimension_size(dataset, "phalf", i)
+  allocate(atm%level(i))
+  call read_data(dataset, "phalf", atm%level)
+
   !Read in the times.
   call get_variable_size(dataset, "time", dim_sizes(1:1))
   atm%num_times = dim_sizes(1)
   allocate(atm%time(atm%num_times))
-  call read_data(dataset, "time", time)
+  call read_data(dataset, "time", atm%time)
   call get_variable_attribute(dataset, "time", "units", atm%time_units)
   call get_variable_attribute(dataset, "time", "calendar", atm%calendar)
 
@@ -127,11 +141,14 @@ subroutine create_atmosphere(atm)
 
   !Solar zenith angle.
   allocate(atm%solar_zenith_angle(nx, ny, atm%num_times))
-  call read_data(dataset, "cosine_zenith", atm%solar_zenith)
+  call read_data(dataset, "cosine_zenith", atm%solar_zenith_angle)
 
   !Solar constant.
   allocate(atm%total_solar_irradiance(atm%num_times))
-  call read_data(dataset, "solar_constant", atm%total_solar_irradiance)
+  allocate(buffer2d(1, atm%num_times))
+  call read_data(dataset, "solar_constant", buffer2d)
+  atm%total_solar_irradiance(:) = buffer2d(1,:)
+  deallocate(buffer2d)
 
   !Daylight fraction.
   allocate(atm%daylight_fraction(nx, ny, atm%num_times))
@@ -139,7 +156,10 @@ subroutine create_atmosphere(atm)
 
   !Earth sun distance fraction.
   allocate(atm%earth_sun_distance_fraction(atm%num_times))
-  call read_data(dataset, "earth_sun_distance_fraction", atm%earth_sun_distance_fraction)
+  allocate(buffer2d(1, atm%num_times))
+  call read_data(dataset, "earth_sun_distance_fraction", buffer2d)
+  atm%earth_sun_distance_fraction(:) = buffer2d(1,:)
+  deallocate(buffer2d)
 
   !Get the number of layers and levels.
   call get_dimension_size(dataset, "pfull", atm%num_layers)
@@ -158,7 +178,6 @@ subroutine create_atmosphere(atm)
   call read_data(dataset, "level_temperature", atm%level_temperature)
 
   !Molecular abundances.
-  allocate(atm%molecules(2))
   allocate(atm%ppmv(nx, ny, atm%num_layers, atm%num_times, 2))
 
   !Water abundance.
@@ -238,7 +257,6 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%level_pressure)) deallocate(atm%level_pressure)
   if (allocated(atm%level_temperature)) deallocate(atm%level_temperature)
   if (allocated(atm%longitude)) deallocate(atm%longitude)
-  if (allocated(atm%molecules)) deallocate(atm%molecules)
   if (allocated(atm%ppmv)) deallocate(atm%ppmv)
   if (allocated(atm%solar_zenith_angle)) deallocate(atm%solar_zenith_angle)
   if (allocated(atm%surface_albedo_diffuse_ir)) deallocate(atm%surface_albedo_diffuse_ir)
@@ -248,8 +266,6 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%surface_temperature)) deallocate(atm%surface_temperature)
   if (allocated(atm%time)) deallocate(atm%time)
   if (allocated(atm%total_solar_irradiance)) deallocate(atm%total_solar_irradiance)
-  if (allocated(atm%zenith_angle)) deallocate(atm%zenith_angle)
-  if (allocated(atm%zenith_weight)) deallocate(atm%zenith_weight)
   if (allocated(atm%stratiform_droplet_number)) deallocate(atm%stratiform_droplet_number)
   if (allocated(atm%shallow_droplet_number)) deallocate(atm%shallow_droplet_number)
   if (allocated(atm%land_fraction)) deallocate(atm%land_fraction)
@@ -265,13 +281,11 @@ subroutine create_atmosphere_domain(nx, ny, domain)
 
   integer, dimension(4,6) :: global_indices
   integer, dimension(2,6) :: layout
-  integer, dimension(6) :: pe_start
-  integer, dimension(6) :: pe_end
-  integer, dimension(2) :: io_layout
+  integer, dimension(6) :: ni, nj, pe_start, pe_end
+  integer, dimension(2) :: io_layout, msize
   integer, dimension(12) :: tile1, tile2, istart1, iend1, jstart1, jend1, istart2, &
                             iend2, jstart2, jend2
-  integer, dimension(2) :: msize
-  integer :: i
+  integer :: i, npes
   integer, parameter :: ntiles = 6
   integer, parameter :: num_contact = 12
   integer, parameter :: ehalo = 2
@@ -285,10 +299,12 @@ subroutine create_atmosphere_domain(nx, ny, domain)
                     "number or ranks must be a multiple of 6.", fatal)
   endif
   do i = 1, ntiles
+    ni(i) = nx
+    nj(i) = ny
     global_indices(:,i) = (/1, nx, 1, ny/)
     layout(:,i) = (/1, npes/ntiles/)
     pe_start(i) = (i - 1)*npes/ntiles
-    pe_end = i*npes/ntiles - 1
+    pe_end(i) = i*npes/ntiles - 1
   enddo
   io_layout(:) = 1
 
