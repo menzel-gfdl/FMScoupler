@@ -5,22 +5,22 @@ use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init
 use field_manager_mod, only: model_atmos
 use fms_mod, only: error_mesg, fatal, fms_end, fms_init
 use get_cal_time_mod, only: get_cal_time
+use grid2_mod, only: grid_end, grid_init
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain, mpp_get_io_domain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 use radiation_driver2, only: Radiation
-use time_manager_mod, only: julian, set_calendar_type, time_manager_init, time_type
+use time_manager_mod, only: get_date, julian, set_calendar_type, time_manager_init, &
+                            time_type
 use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
                               tracer_manager_end, tracer_manager_init
 implicit none
 
-integer :: i, id_lat, id_lon, id_pfull, id_phalf, iec, isc, &
-           j, jec, jsc, num_tracers, nx, ny
-real :: dlat, dlon, dt
+integer :: i, id_lat, id_lon, id_pfull, id_phalf, j, num_tracers, nx, ny
+integer, dimension(6) :: date
+real :: dt
 type(Atmosphere_t) :: atm
 type(Radiation) :: rte
 type(time_type) :: time, time_next
-
-real, dimension(:,:), allocatable :: latitude, longitude
 real, dimension(:,:,:), allocatable :: aerosol_relative_humidity
 real, dimension(:,:,:,:), allocatable :: aerosol_concentration
 real, dimension(:,:,:,:), allocatable :: cloud_tracers
@@ -31,6 +31,7 @@ type(domain2d), pointer :: io_domain
 call fms_init()
 call time_manager_init()
 call tracer_manager_init()
+call grid_init()
 
 !Read in input data.
 call create_atmosphere(atm)
@@ -48,28 +49,9 @@ else
   dt = 0.
 endif
 
-!Calculate longitude and latitude grid box corners.
-io_domain => mpp_get_io_domain(atm%domain)
-call mpp_get_compute_domain(io_domain, xbegin=isc, xend=iec, xsize=nx, &
-                            ybegin=jsc, yend=jec, ysize=ny)
-if (nx .le. 1 .or. ny .le. 1) then
-  call error_mesg("main", "must have more than 1 point in the x and y directions.", &
-                  fatal)
-endif
-dlat = abs(atm%latitude(2) - atm%latitude(1))/2.
-allocate(latitude(nx + 1, ny + 1))
-latitude(:,1) = (2.*pi/real(ny + 1))*(atm%latitude(jsc) - dlat)
-do i = 1, ny
-  latitude(:,i + 1) = (2.*pi/real(ny + 1))*(atm%latitude(jsc + i - 1) + dlat)
-enddo
-dlon = abs(atm%longitude(2) - atm%longitude(1))/2.
-allocate(longitude(nx + 1, ny + 1))
-longitude(1,:) = (2.*pi/real(nx + 1))*(atm%longitude(isc) - dlon)
-do i = 1, nx
-  longitude(i + 1,:) = (2.*pi/real(nx + 1))*(atm%longitude(isc + i - 1) + dlon)
-enddo
-
 !Allocate cloud type arrays.
+io_domain => mpp_get_io_domain(atm%domain)
+call mpp_get_compute_domain(io_domain, xsize=nx, ysize=ny)
 clouds%index_uw_conv = 1
 clouds%index_strat = 2
 allocate(clouds%cloud_data(2))
@@ -85,21 +67,19 @@ cloud_tracers(:,:,:,:) = 0.
 
 !Allocate aerosol arrays.
 allocate(aerosol_relative_humidity(nx, ny, atm%num_layers))
-aerosol_relative_humidity(:,:,:) = 0.
-allocate(aerosol_concentration(nx, ny, atm%num_layers, 15))
+allocate(aerosol_concentration(nx, ny, atm%num_layers, num_tracers))
 aerosol_concentration(:,:,:,:) = 0.
 
 !Set up the diagnostics.
-call diag_manager_init()
-!call diag_manager_init(time_init=(/time%year, time%month, time%day, time%hour, &
-!                                   time%minute, time%second/))
+call get_date(time, date(1), date(2), date(3), date(4), date(5), date(6))
+call diag_manager_init(time_init=date)
 id_lon = diag_axis_init("lon", atm%longitude, "degrees_east", "X", domain2=atm%domain)
 id_lat = diag_axis_init("lat", atm%latitude, "degrees_north", "Y", domain2=atm%domain)
 id_phalf = diag_axis_init("phalf", atm%level, "mb", "Z")
 id_pfull = diag_axis_init("pfull", atm%layer, "mb", "Z")
 
 !Initialize the radiation object.
-call rte%create(atm%num_layers, longitude, latitude)
+call rte%create(atm%num_layers, atm%longitude_bounds, atm%latitude_bounds)
 call rte%initialize_diagnostics(id_lon, id_lat, id_pfull, id_phalf, time)
 
 do i = 1, atm%num_times
@@ -126,6 +106,9 @@ do i = 1, atm%num_times
   clouds%cloud_data(j)%cloud_area(:,:,:) = atm%stratiform_cloud_fraction(:,:,:,i)
   clouds%cloud_data(j)%liquid_amt(:,:,:) = atm%stratiform_cloud_liquid_content(:,:,:,i)
   clouds%cloud_data(j)%ice_amt(:,:,:) = atm%stratiform_cloud_ice_content(:,:,:,i)
+
+  !Copy aerosol relative_humidity for now.
+  aerosol_relative_humidity(:,:,:) = atm%ppmv(:,:,:,i,h2o)
 
   call rte%update(time)
   call rte%calculate(atm%layer_pressure(:,:,:,i), &
@@ -154,8 +137,7 @@ do i = 1, atm%num_times
 enddo
 
 !Clean up.
-deallocate(latitude, longitude, aerosol_relative_humidity)
-deallocate(aerosol_concentration, cloud_tracers)
+deallocate(aerosol_relative_humidity, aerosol_concentration, cloud_tracers)
 call diag_manager_end(time)
 do i = 1, size(clouds%cloud_data)
   deallocate(clouds%cloud_data(i)%droplet_number)
@@ -166,6 +148,7 @@ enddo
 deallocate(clouds%cloud_data)
 call rte%destroy()
 call destroy_atmosphere(atm)
+call grid_end()
 call tracer_manager_end()
 call fms_end()
 

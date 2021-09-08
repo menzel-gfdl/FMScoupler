@@ -4,10 +4,11 @@ use fms_mod, only: check_nml_error, error_mesg, fatal, input_nml_file, mpp_npes
 use fms2_io_mod, only: close_file, FmsNetcdfDomainFile_t, FmsNetcdfFile_t, &
                        get_dimension_size, get_variable_attribute, get_variable_size, &
                        open_file, read_data, register_axis
+use grid2_mod, only: get_grid_cell_vertices
 use mo_rte_kind, only: wp
 use mpp_domains_mod, only: domain2d, mpp_define_mosaic, mpp_define_io_domain, &
-                           mpp_get_compute_domain, mpp_get_io_domain
-
+                           mpp_get_compute_domain, mpp_get_current_ntile, &
+                           mpp_get_io_domain, mpp_get_tile_id
 implicit none
 private
 
@@ -18,7 +19,8 @@ type, public :: Atmosphere_t
   type(domain2d) :: domain !< 2d domain.
   real(kind=wp), dimension(:), allocatable :: earth_sun_distance_fraction !< Earth sun distance fraction.
   real(kind=wp), dimension(:,:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks, time).
-  real(kind=wp), dimension(:), allocatable :: latitude !< Latitude [degrees].
+  real(kind=wp), dimension(:), allocatable :: latitude !< Y dimension data.
+  real(kind=wp), dimension(:,:), allocatable :: latitude_bounds !< Latitude of cell vertices [degrees].
   real(kind=wp), dimension(:), allocatable :: layer !< Pressure [mb].
   real(kind=wp), dimension(:,:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (block_size, layer, num_blocks, time).
   real(kind=wp), dimension(:,:,:,:), allocatable :: layer_temperature !< Temperature [K] (block_size, layer, num_blocks, time).
@@ -26,7 +28,8 @@ type, public :: Atmosphere_t
   real(kind=wp), dimension(:), allocatable :: level !< Pressure [mb].
   real(kind=wp), dimension(:,:,:,:), allocatable :: level_pressure !< Pressure [Pa] (blocks_size level, num_blocks, time).
   real(kind=wp), dimension(:,:,:,:), allocatable :: level_temperature !< Temperature [K] (block_size, level, num_blocks, time).
-  real(kind=wp), dimension(:), allocatable :: longitude !< Longitude [degrees].
+  real(kind=wp), dimension(:), allocatable :: longitude !< X dimension data.
+  real(kind=wp), dimension(:,:), allocatable :: longitude_bounds !< Longitude of cell vertices [degrees].
   integer :: num_layers !< Number of layers.
   integer :: num_levels !< Number of levels.
   integer :: num_times !< Number of times.
@@ -91,6 +94,9 @@ subroutine create_atmosphere(atm)
 
   !Create a 2d domain.
   call create_atmosphere_domain(nx, ny, atm%domain)
+
+  !Get the longitude and latitude bounds for each domain grid cell.
+  call lon_and_lat_bounds(atm)
 
   !Open dataset.
   if (.not. open_file(dataset, atmos_path, "read", atm%domain)) then
@@ -250,6 +256,7 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%stratiform_cloud_liquid_content)) deallocate(atm%stratiform_cloud_liquid_content)
   if (allocated(atm%daylight_fraction)) deallocate(atm%daylight_fraction)
   if (allocated(atm%latitude)) deallocate(atm%latitude)
+  if (allocated(atm%latitude_bounds)) deallocate(atm%latitude_bounds)
   if (allocated(atm%layer_pressure)) deallocate(atm%layer_pressure)
   if (allocated(atm%layer_temperature)) deallocate(atm%layer_temperature)
   if (allocated(atm%layer_thickness)) deallocate(atm%layer_thickness)
@@ -257,6 +264,7 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%level_pressure)) deallocate(atm%level_pressure)
   if (allocated(atm%level_temperature)) deallocate(atm%level_temperature)
   if (allocated(atm%longitude)) deallocate(atm%longitude)
+  if (allocated(atm%longitude_bounds)) deallocate(atm%longitude_bounds)
   if (allocated(atm%ppmv)) deallocate(atm%ppmv)
   if (allocated(atm%solar_zenith_angle)) deallocate(atm%solar_zenith_angle)
   if (allocated(atm%surface_albedo_diffuse_ir)) deallocate(atm%surface_albedo_diffuse_ir)
@@ -460,6 +468,24 @@ subroutine create_atmosphere_domain(nx, ny, domain)
                          name=trim("Cubed-sphere"), memory_size=msize)
   call mpp_define_io_domain(domain, io_layout)
 end subroutine create_atmosphere_domain
+
+
+subroutine lon_and_lat_bounds(atm)
+
+  type(Atmosphere_t), intent(inout) :: atm
+
+  integer :: nx, ny
+  integer, dimension(1) :: tile
+
+  call mpp_get_compute_domain(atm%domain, xsize=nx, ysize=ny)
+  if (mpp_get_current_ntile(atm%domain) .ne. size(tile)) then
+    call error_mesg("lon_and_lat_bounds", "More than one domain tile per rank.", fatal)
+  endif
+  tile = mpp_get_tile_id(atm%domain)
+  allocate(atm%longitude_bounds(nx + 1, ny + 1))
+  allocate(atm%latitude_bounds(nx + 1, ny + 1))
+  call get_grid_cell_vertices("ATM", tile(1), atm%longitude_bounds, atm%latitude_bounds, atm%domain)
+end subroutine
 
 
 end module am4
