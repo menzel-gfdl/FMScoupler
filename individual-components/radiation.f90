@@ -148,7 +148,6 @@ enddo
 deallocate(clouds%cloud_data)
 call rte%destroy()
 call destroy_atmosphere(atm)
-call grid_end()
 call tracer_manager_end()
 call fms_end()
 

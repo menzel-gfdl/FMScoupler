@@ -1,5 +1,6 @@
 !> @brief Reads in data from AM4 history files.
 module am4
+use constants_mod, only: pi
 use fms_mod, only: check_nml_error, error_mesg, fatal, input_nml_file, mpp_npes
 use fms2_io_mod, only: close_file, FmsNetcdfDomainFile_t, FmsNetcdfFile_t, &
                        get_dimension_size, get_variable_attribute, get_variable_size, &
@@ -484,8 +485,11 @@ subroutine lon_and_lat_bounds(atm)
   tile = mpp_get_tile_id(atm%domain)
   allocate(atm%longitude_bounds(nx + 1, ny + 1))
   allocate(atm%latitude_bounds(nx + 1, ny + 1))
-  call get_grid_cell_vertices("ATM", tile(1), atm%longitude_bounds, atm%latitude_bounds, atm%domain)
-end subroutine
+  call get_grid_cell_vertices("ATM", tile(1), atm%longitude_bounds, &
+                              atm%latitude_bounds, atm%domain)
+  atm%longitude_bounds(:,:) = atm%longitude_bounds(:,:)*(2.*pi/360.)
+  atm%latitude_bounds(:,:) = atm%latitude_bounds(:,:)*(2.*pi/360.)
+end subroutine lon_and_lat_bounds
 
 
 end module am4
