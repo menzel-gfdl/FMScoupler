@@ -61,7 +61,9 @@ integer, parameter, public :: o3 = 2
 
 character(len=256) :: atmos_path = "none"
 logical :: clearsky = .false.
-namelist /am4_nml/ atmos_path, clearsky
+integer, dimension(2) :: io_layout = (/1, 1/)
+integer, dimension(2) :: layout = (/0, 0/)
+namelist /am4_nml/ atmos_path, clearsky, io_layout, layout
 
 
 contains
@@ -289,9 +291,9 @@ subroutine create_atmosphere_domain(nx, ny, domain)
   type(domain2d), intent(inout) :: domain !< A cubed-sphere domain.
 
   integer, dimension(4,6) :: global_indices
-  integer, dimension(2,6) :: layout
+  integer, dimension(2,6) :: layout_
   integer, dimension(6) :: ni, nj, pe_start, pe_end
-  integer, dimension(2) :: io_layout, msize
+  integer, dimension(2) :: msize
   integer, dimension(12) :: tile1, tile2, istart1, iend1, jstart1, jend1, istart2, &
                             iend2, jstart2, jend2
   integer :: i, npes
@@ -311,11 +313,14 @@ subroutine create_atmosphere_domain(nx, ny, domain)
     ni(i) = nx
     nj(i) = ny
     global_indices(:,i) = (/1, nx, 1, ny/)
-    layout(:,i) = (/1, npes/ntiles/)
+    layout_(:,i) = layout(:)
+    if (layout_(1,i) .gt. nx .or. layout_(2,i) .gt. ny) then
+      call error_mesg("create_atmosphere_domain", &
+                      "layout is greater than dimension length.", fatal)
+    endif
     pe_start(i) = (i - 1)*npes/ntiles
     pe_end(i) = i*npes/ntiles - 1
   enddo
-  io_layout(:) = 1
 
   !Contact line 1, between tile 1 (EAST) and tile 2 (WEST)
   tile1(1) = 1
@@ -460,9 +465,9 @@ subroutine create_atmosphere_domain(nx, ny, domain)
   iend2(12) = 1
   jstart2(12) = 1
   jend2(12) = nj(6)
-  msize(1) = maxval(ni(:)/layout(1,:)) + whalo + ehalo + 1
-  msize(2) = maxval(nj(:)/layout(2,:)) + shalo + nhalo + 1
-  call mpp_define_mosaic(global_indices, layout, domain, ntiles, num_contact, tile1, &
+  msize(1) = maxval(ni(:)/layout_(1,:)) + whalo + ehalo + 1
+  msize(2) = maxval(nj(:)/layout_(2,:)) + shalo + nhalo + 1
+  call mpp_define_mosaic(global_indices, layout_, domain, ntiles, num_contact, tile1, &
                          tile2, istart1, iend1, jstart1, jend1, istart2, iend2, &
                          jstart2, jend2, pe_start, pe_end, symmetry=.true., &
                          whalo=whalo, ehalo=ehalo, shalo=shalo, nhalo=nhalo, &
