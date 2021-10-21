@@ -1,5 +1,6 @@
 program main
-use am4, only: Atmosphere_t, create_atmosphere, destroy_atmosphere, h2o, o3
+use am4, only: Atmosphere_t, create_atmosphere, destroy_atmosphere, h2o, o3, &
+               read_time_slice
 use constants_mod, only: pi
 use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init
 use field_manager_mod, only: model_atmos
@@ -87,50 +88,53 @@ do i = 1, atm%num_times
   time = get_cal_time(atm%time(i), atm%time_units, atm%calendar)
   time_next = get_cal_time(atm%time(i) + dt, atm%time_units, atm%calendar)
 
+  !Read in the atmospheric properies.
+  call read_time_slice(atm, i)
+
   !Populate the clouds derived type.
   j = clouds%index_uw_conv
-  clouds%cloud_data(j)%droplet_number(:,:,:) = atm%shallow_droplet_number(:,:,:,i)
-  clouds%cloud_data(j)%cloud_area(:,:,:) = atm%shallow_cloud_fraction(:,:,:,i)
-  clouds%cloud_data(j)%liquid_amt(:,:,:) = atm%shallow_cloud_liquid_content(:,:,:,i)
-  clouds%cloud_data(j)%ice_amt(:,:,:) = atm%shallow_cloud_ice_content(:,:,:,i)
+  clouds%cloud_data(j)%droplet_number(:,:,:) = atm%shallow_droplet_number(:,:,:)
+  clouds%cloud_data(j)%cloud_area(:,:,:) = atm%shallow_cloud_fraction(:,:,:)
+  clouds%cloud_data(j)%liquid_amt(:,:,:) = atm%shallow_cloud_liquid_content(:,:,:)
+  clouds%cloud_data(j)%ice_amt(:,:,:) = atm%shallow_cloud_ice_content(:,:,:)
   j = get_tracer_index(model_atmos, "liq_drp")
-  cloud_tracers(:,:,:,j) = atm%stratiform_droplet_number(:,:,:,i)
+  cloud_tracers(:,:,:,j) = atm%stratiform_droplet_number(:,:,:)
   j = get_tracer_index(model_atmos, "cld_amt")
-  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_fraction(:,:,:,i)
+  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_fraction(:,:,:)
   j = get_tracer_index(model_atmos, "liq_wat")
-  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_liquid_content(:,:,:,i)
+  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_liquid_content(:,:,:)
   j = get_tracer_index(model_atmos, "ice_wat")
-  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_ice_content(:,:,:,i)
+  cloud_tracers(:,:,:,j) = atm%stratiform_cloud_ice_content(:,:,:)
   j = clouds%index_strat
-  clouds%cloud_data(j)%droplet_number(:,:,:) = atm%stratiform_droplet_number(:,:,:,i)
-  clouds%cloud_data(j)%cloud_area(:,:,:) = atm%stratiform_cloud_fraction(:,:,:,i)
-  clouds%cloud_data(j)%liquid_amt(:,:,:) = atm%stratiform_cloud_liquid_content(:,:,:,i)
-  clouds%cloud_data(j)%ice_amt(:,:,:) = atm%stratiform_cloud_ice_content(:,:,:,i)
+  clouds%cloud_data(j)%droplet_number(:,:,:) = atm%stratiform_droplet_number(:,:,:)
+  clouds%cloud_data(j)%cloud_area(:,:,:) = atm%stratiform_cloud_fraction(:,:,:)
+  clouds%cloud_data(j)%liquid_amt(:,:,:) = atm%stratiform_cloud_liquid_content(:,:,:)
+  clouds%cloud_data(j)%ice_amt(:,:,:) = atm%stratiform_cloud_ice_content(:,:,:)
 
   !Copy aerosol relative_humidity for now.
-  aerosol_relative_humidity(:,:,:) = atm%ppmv(:,:,:,i,h2o)
+  aerosol_relative_humidity(:,:,:) = atm%ppmv(:,:,:,h2o)
 
   call rte%update(time)
-  call rte%calculate(atm%layer_pressure(:,:,:,i), &
-                     atm%level_pressure(:,:,:,i), &
-                     atm%layer_temperature(:,:,:,i), &
-                     atm%level_temperature(:,:,:,i), &
-                     atm%surface_temperature(:,:,i), &
+  call rte%calculate(atm%layer_pressure(:,:,:), &
+                     atm%level_pressure(:,:,:), &
+                     atm%layer_temperature(:,:,:), &
+                     atm%level_temperature(:,:,:), &
+                     atm%surface_temperature(:,:), &
                      aerosol_relative_humidity, &
-                     atm%ppmv(:,:,:,i,h2o), &
-                     atm%ppmv(:,:,:,i,o3), &
-                     atm%layer_thickness(:,:,:,i), &
-                     atm%solar_zenith_angle(:,:,i), &
-                     atm%surface_albedo_direct_uv(:,:,i), &
-                     atm%surface_albedo_diffuse_uv(:,:,i), &
-                     atm%surface_albedo_direct_ir(:,:,i), &
-                     atm%surface_albedo_diffuse_ir(:,:,i), &
-                     atm%daylight_fraction(:,:,i), &
-                     atm%earth_sun_distance_fraction(i), &
+                     atm%ppmv(:,:,:,h2o), &
+                     atm%ppmv(:,:,:,o3), &
+                     atm%layer_thickness(:,:,:), &
+                     atm%solar_zenith_angle(:,:), &
+                     atm%surface_albedo_direct_uv(:,:), &
+                     atm%surface_albedo_diffuse_uv(:,:), &
+                     atm%surface_albedo_direct_ir(:,:), &
+                     atm%surface_albedo_diffuse_ir(:,:), &
+                     atm%daylight_fraction(:,:), &
+                     atm%earth_sun_distance_fraction, &
                      aerosol_concentration, &
                      clouds, &
                      cloud_tracers, &
-                     atm%land_fraction(:,:,i), &
+                     atm%land_fraction(:,:), &
                      time, &
                      time_next)
   time = time_next

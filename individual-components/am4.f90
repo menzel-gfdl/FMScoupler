@@ -16,45 +16,46 @@ private
 
 type, public :: Atmosphere_t
   character(len=128) :: calendar !< Calendar type for the time axis.
-  real(kind=wp), dimension(:,:,:), allocatable :: daylight_fraction !< Daylight correction factor (block_size, num_blocks, time).
+  real(kind=wp), dimension(:,:), allocatable :: daylight_fraction !< Daylight correction factor (block_size, num_blocks).
   type(domain2d) :: domain !< 2d domain.
-  real(kind=wp), dimension(:), allocatable :: earth_sun_distance_fraction !< Earth sun distance fraction.
-  real(kind=wp), dimension(:,:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks, time).
+  real(kind=wp) :: earth_sun_distance_fraction !< Earth sun distance fraction.
+  real(kind=wp), dimension(:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks).
   real(kind=wp), dimension(:), allocatable :: latitude !< Y dimension data.
   real(kind=wp), dimension(:,:), allocatable :: latitude_bounds !< Latitude of cell vertices [degrees].
   real(kind=wp), dimension(:), allocatable :: layer !< Pressure [mb].
-  real(kind=wp), dimension(:,:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: layer_temperature !< Temperature [K] (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: layer_thickness !< Thickness [m] (block_size, layer, num_blocks, time).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_temperature !< Temperature [K] (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_thickness !< Thickness [m] (block_size, layer, num_blocks).
   real(kind=wp), dimension(:), allocatable :: level !< Pressure [mb].
-  real(kind=wp), dimension(:,:,:,:), allocatable :: level_pressure !< Pressure [Pa] (blocks_size level, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: level_temperature !< Temperature [K] (block_size, level, num_blocks, time).
+  real(kind=wp), dimension(:,:,:), allocatable :: level_pressure !< Pressure [Pa] (blocks_size level, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: level_temperature !< Temperature [K] (block_size, level, num_blocks).
   real(kind=wp), dimension(:), allocatable :: longitude !< X dimension data.
   real(kind=wp), dimension(:,:), allocatable :: longitude_bounds !< Longitude of cell vertices [degrees].
   integer :: num_layers !< Number of layers.
   integer :: num_levels !< Number of levels.
   integer :: num_times !< Number of times.
-  real(kind=wp), dimension(:,:,:,:,:), allocatable :: ppmv !< Molecular abundancee (block_size, level, num_blocks, time, molecule).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: solar_zenith_angle !< Solar zenith angle [degrees] (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks, time)
-  real(kind=wp), dimension(:,:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_albedo_direct_uv !< Surface albedo for ultraviolet direct beam (block_size, num_blocks, time).
-  real(kind=wp), dimension(:,:,:), allocatable :: surface_temperature !< Surface temperature [K] (block_size, num_blocks, time).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: ppmv !< Molecular abundancee (block_size, level, num_blocks, molecule).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks)
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks)
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: solar_zenith_angle !< Solar zenith angle [degrees] (block_size, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks)
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks)
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (block_size, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (block_size, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (block_size, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_uv !< Surface albedo for ultraviolet direct beam (block_size, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: surface_temperature !< Surface temperature [K] (block_size, num_blocks).
   real(kind=wp), dimension(:), allocatable :: time !< Time [hours or days or months].
   character(len=128) :: time_units !< Time units (i.e. days since 0000-00-00 00:00:00)
-  real(kind=wp), dimension(:), allocatable :: total_solar_irradiance !< Total solar irradiance [W m-2] (time).
+  real(kind=wp) :: total_solar_irradiance !< Total solar irradiance [W m-2].
 end type Atmosphere_t
 
 public :: create_atmosphere
+public :: read_time_slice
 public :: destroy_atmosphere
 integer, parameter, public :: h2o = 1
 integer, parameter, public :: o3 = 2
@@ -77,7 +78,6 @@ subroutine create_atmosphere(atm)
   character(len=256) :: attr
   integer, dimension(4) :: dim_sizes
   integer :: err, i, ierr, nx, ny
-  real, dimension(:,:), allocatable :: buffer2d
   type(FmsNetcdfDomainFile_t) :: dataset
   type(FmsNetcdfFile_t) :: tilefile
   type(domain2d), pointer :: io_domain
@@ -140,110 +140,107 @@ subroutine create_atmosphere(atm)
   call get_variable_attribute(dataset, "time", "units", atm%time_units)
   call get_variable_attribute(dataset, "time", "calendar", atm%calendar)
 
-  !Surface temperature.
-  allocate(atm%surface_temperature(nx, ny, atm%num_times))
-  call read_data(dataset, "surface_temperature", atm%surface_temperature)
-
-  !Land fraction.
-  allocate(atm%land_fraction(nx, ny, atm%num_times))
-  call read_data(dataset, "land_fraction", atm%land_fraction)
-
-  !Solar zenith angle.
-  allocate(atm%solar_zenith_angle(nx, ny, atm%num_times))
-  call read_data(dataset, "cosine_zenith", atm%solar_zenith_angle)
-
-  !Solar constant.
-  allocate(atm%total_solar_irradiance(atm%num_times))
-  allocate(buffer2d(1, atm%num_times))
-  call read_data(dataset, "solar_constant", buffer2d)
-  atm%total_solar_irradiance(:) = buffer2d(1,:)
-  deallocate(buffer2d)
-
-  !Daylight fraction.
-  allocate(atm%daylight_fraction(nx, ny, atm%num_times))
-  call read_data(dataset, "daylight_fraction", atm%daylight_fraction)
-
-  !Earth sun distance fraction.
-  allocate(atm%earth_sun_distance_fraction(atm%num_times))
-  allocate(buffer2d(1, atm%num_times))
-  call read_data(dataset, "earth_sun_distance_fraction", buffer2d)
-  atm%earth_sun_distance_fraction(:) = buffer2d(1,:)
-  deallocate(buffer2d)
+  allocate(atm%surface_temperature(nx, ny))
+  allocate(atm%land_fraction(nx, ny))
+  allocate(atm%solar_zenith_angle(nx, ny))
+  allocate(atm%daylight_fraction(nx, ny))
 
   !Get the number of layers and levels.
   call get_dimension_size(dataset, "pfull", atm%num_layers)
   atm%num_levels = atm%num_layers + 1
 
-  !Pressure.
-  allocate(atm%layer_pressure(nx, ny, atm%num_layers, atm%num_times))
-  call read_data(dataset, "layer_pressure", atm%layer_pressure)
-  allocate(atm%level_pressure(nx, ny, atm%num_levels, atm%num_times))
-  call read_data(dataset, "level_pressure", atm%level_pressure)
-
-  !Temperature.
-  allocate(atm%layer_temperature(nx, ny, atm%num_layers, atm%num_times))
-  call read_data(dataset, "layer_temperature", atm%layer_temperature)
-  allocate(atm%level_temperature(nx, ny, atm%num_levels, atm%num_times))
-  call read_data(dataset, "level_temperature", atm%level_temperature)
-
-  !Molecular abundances.
-  allocate(atm%ppmv(nx, ny, atm%num_layers, atm%num_times, 2))
-
-  !Water abundance.
-  call read_data(dataset, "water_vapor", atm%ppmv(:,:,:,:,h2o))
-
-  !Read water vapor and ozone.
-  call read_data(dataset, "ozone", atm%ppmv(:,:,:,:,o3))
-
-  !Read in the surface albedos.
-  allocate(atm%surface_albedo_direct_uv(nx, ny, atm%num_times))
-  call read_data(dataset, "visible_direct_albedo", atm%surface_albedo_direct_uv)
-  allocate(atm%surface_albedo_diffuse_uv(nx, ny, atm%num_times))
-  call read_data(dataset, "visible_diffuse_albedo", atm%surface_albedo_diffuse_uv)
-  allocate(atm%surface_albedo_direct_ir(nx, ny, atm%num_times))
-  call read_data(dataset, "infrared_direct_albedo", atm%surface_albedo_direct_ir)
-  allocate(atm%surface_albedo_diffuse_ir(nx, ny, atm%num_times))
-  call read_data(dataset, "infrared_diffuse_albedo", atm%surface_albedo_diffuse_ir)
-
+  allocate(atm%layer_pressure(nx, ny, atm%num_layers))
+  allocate(atm%level_pressure(nx, ny, atm%num_levels))
+  allocate(atm%layer_temperature(nx, ny, atm%num_layers))
+  allocate(atm%level_temperature(nx, ny, atm%num_levels))
+  allocate(atm%ppmv(nx, ny, atm%num_layers, 2))
+  allocate(atm%surface_albedo_direct_uv(nx, ny))
+  allocate(atm%surface_albedo_diffuse_uv(nx, ny))
+  allocate(atm%surface_albedo_direct_ir(nx, ny))
+  allocate(atm%surface_albedo_diffuse_ir(nx, ny))
   if (.not. clearsky) then
-    !Layer thickness.
-    allocate(atm%layer_thickness(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "layer_thickness", atm%layer_thickness)
-
-    !Stratiform cloud fraction.
-    allocate(atm%stratiform_cloud_fraction(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "stratiform_cloud_fraction", atm%stratiform_cloud_fraction)
-
-    !Shallow cloud fraction.
-    allocate(atm%shallow_cloud_fraction(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "shallow_cloud_fraction", atm%shallow_cloud_fraction)
-
-    !Stratiform ice content.
-    allocate(atm%stratiform_cloud_ice_content(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "stratiform_ice_content", atm%stratiform_cloud_ice_content)
-
-    !Shallow ice content.
-    allocate(atm%shallow_cloud_ice_content(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "shallow_ice_content", atm%shallow_cloud_ice_content)
-
-    !Stratiform liquid content.
-    allocate(atm%stratiform_cloud_liquid_content(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "stratiform_liquid_content", atm%stratiform_cloud_liquid_content)
-
-    !Shallow liquid content.
-    allocate(atm%shallow_cloud_liquid_content(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "shallow_liquid_content", atm%shallow_cloud_liquid_content)
-
-    !Stratiform droplet number.
-    allocate(atm%stratiform_droplet_number(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "stratiform_droplet_number", atm%stratiform_droplet_number)
-
-    !Shallow droplet number.
-    allocate(atm%shallow_droplet_number(nx, ny, atm%num_layers, atm%num_times))
-    call read_data(dataset, "shallow_droplet_number", atm%shallow_droplet_number)
+    allocate(atm%layer_thickness(nx, ny, atm%num_layers))
+    allocate(atm%stratiform_cloud_fraction(nx, ny, atm%num_layers))
+    allocate(atm%shallow_cloud_fraction(nx, ny, atm%num_layers))
+    allocate(atm%stratiform_cloud_ice_content(nx, ny, atm%num_layers))
+    allocate(atm%shallow_cloud_ice_content(nx, ny, atm%num_layers))
+    allocate(atm%stratiform_cloud_liquid_content(nx, ny, atm%num_layers))
+    allocate(atm%shallow_cloud_liquid_content(nx, ny, atm%num_layers))
+    allocate(atm%stratiform_droplet_number(nx, ny, atm%num_layers))
+    allocate(atm%shallow_droplet_number(nx, ny, atm%num_layers))
   endif
   call close_file(dataset)
 end subroutine create_atmosphere
+
+subroutine read_time_slice(atm, time_level)
+
+  type(Atmosphere_t), intent(inout) :: atm
+  integer, intent(in) :: time_level
+
+  real, dimension(1,1) :: buffer2d
+  type(FmsNetcdfDomainFile_t) :: dataset
+
+  !Open dataset.
+  if (.not. open_file(dataset, atmos_path, "read", atm%domain)) then
+    call error_mesg("create_atmosphere", "cannot open file "//trim(atmos_path)//".", &
+                    fatal)
+  endif
+  call read_data(dataset, "surface_temperature", atm%surface_temperature, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "land_fraction", atm%land_fraction, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "cosine_zenith", atm%solar_zenith_angle, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "solar_constant", buffer2d(:,1), &
+                 unlim_dim_level=time_level)
+  atm%total_solar_irradiance = buffer2d(1,1)
+  call read_data(dataset, "daylight_fraction", atm%daylight_fraction, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "earth_sun_distance_fraction", buffer2d(:,1), &
+                 unlim_dim_level=time_level)
+  atm%earth_sun_distance_fraction = buffer2d(1,1)
+  call read_data(dataset, "layer_pressure", atm%layer_pressure, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "level_pressure", atm%level_pressure, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "layer_temperature", atm%layer_temperature, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "level_temperature", atm%level_temperature, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "water_vapor", atm%ppmv(:,:,:,h2o), &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "ozone", atm%ppmv(:,:,:,o3), &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "visible_direct_albedo", atm%surface_albedo_direct_uv, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "visible_diffuse_albedo", atm%surface_albedo_diffuse_uv, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "infrared_direct_albedo", atm%surface_albedo_direct_ir, &
+                 unlim_dim_level=time_level)
+  call read_data(dataset, "infrared_diffuse_albedo", atm%surface_albedo_diffuse_ir, &
+                 unlim_dim_level=time_level)
+  if (.not. clearsky) then
+    call read_data(dataset, "layer_thickness", atm%layer_thickness, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_cloud_fraction", atm%stratiform_cloud_fraction, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "shallow_cloud_fraction", atm%shallow_cloud_fraction, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_ice_content", atm%stratiform_cloud_ice_content, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "shallow_ice_content", atm%shallow_cloud_ice_content, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_liquid_content", atm%stratiform_cloud_liquid_content, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "shallow_liquid_content", atm%shallow_cloud_liquid_content, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_droplet_number", atm%stratiform_droplet_number, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "shallow_droplet_number", atm%shallow_droplet_number, &
+                   unlim_dim_level=time_level)
+  endif
+  call close_file(dataset)
+end subroutine read_time_slice
 
 
 !> @brief Free memory for atmosphere.
@@ -276,7 +273,6 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%surface_albedo_direct_uv)) deallocate(atm%surface_albedo_direct_uv)
   if (allocated(atm%surface_temperature)) deallocate(atm%surface_temperature)
   if (allocated(atm%time)) deallocate(atm%time)
-  if (allocated(atm%total_solar_irradiance)) deallocate(atm%total_solar_irradiance)
   if (allocated(atm%stratiform_droplet_number)) deallocate(atm%stratiform_droplet_number)
   if (allocated(atm%shallow_droplet_number)) deallocate(atm%shallow_droplet_number)
   if (allocated(atm%land_fraction)) deallocate(atm%land_fraction)
