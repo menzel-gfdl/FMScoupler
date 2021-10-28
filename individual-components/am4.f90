@@ -185,6 +185,12 @@ subroutine read_time_slice(atm, time_level)
     call error_mesg("create_atmosphere", "cannot open file "//trim(atmos_path)//".", &
                     fatal)
   endif
+
+  !Identify longitude and latitude dimensions.
+  call register_axis(dataset, "grid_xt", "x")
+  call register_axis(dataset, "grid_yt", "y")
+
+  !Read in the data.
   call read_data(dataset, "surface_temperature", atm%surface_temperature, &
                  unlim_dim_level=time_level)
   call read_data(dataset, "land_fraction", atm%land_fraction, &

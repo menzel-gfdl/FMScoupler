@@ -10,7 +10,7 @@ use grid2_mod, only: grid_end, grid_init
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain, mpp_get_io_domain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 use radiation_driver2, only: Radiation
-use time_manager_mod, only: get_date, julian, set_calendar_type, time_manager_init, &
+use time_manager_mod, only: get_date, julian, print_time, set_calendar_type, time_manager_init, &
                             time_type
 use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
                               tracer_manager_end, tracer_manager_init
@@ -87,6 +87,7 @@ do i = 1, atm%num_times
   !Calculate the current time.
   time = get_cal_time(atm%time(i), atm%time_units, atm%calendar)
   time_next = get_cal_time(atm%time(i) + dt, atm%time_units, atm%calendar)
+  call print_time(time, "Running timestep: ")
 
   !Read in the atmospheric properies.
   call read_time_slice(atm, i)
