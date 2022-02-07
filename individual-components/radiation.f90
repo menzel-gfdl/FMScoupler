@@ -9,14 +9,14 @@ use get_cal_time_mod, only: get_cal_time
 use grid2_mod, only: grid_end, grid_init
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain, mpp_get_io_domain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
-use radiation_driver2, only: Radiation
+use radiation_driver2, only: ckd, lbl, Radiation
 use time_manager_mod, only: get_date, julian, print_time, set_calendar_type, time_manager_init, &
                             time_type
 use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
                               tracer_manager_end, tracer_manager_init
 implicit none
 
-integer :: i, id_lat, id_lon, id_pfull, id_phalf, j, num_tracers, nx, ny
+integer :: i, id_lat, id_lon, id_pfull, id_phalf, j, num_tracers, n, nx, ny
 integer, dimension(6) :: date
 real :: dt
 type(Atmosphere_t) :: atm
@@ -27,6 +27,15 @@ real, dimension(:,:,:,:), allocatable :: aerosol_concentration
 real, dimension(:,:,:,:), allocatable :: cloud_tracers
 type(clouds_from_moist_block_type) :: clouds
 type(domain2d), pointer :: io_domain
+real, dimension(:,:,:), allocatable :: longwave_all_sky_flux_down
+real, dimension(:,:,:), allocatable :: longwave_all_sky_flux_up
+real, dimension(:,:,:), allocatable :: shortwave_all_sky_flux_down
+real, dimension(:,:,:), allocatable :: shortwave_all_sky_flux_up
+real, dimension(:,:,:), allocatable :: longwave_heating_rate
+real, dimension(:,:,:), allocatable :: shortwave_heating_rate
+real, dimension(:,:,:,:), allocatable :: shortwave_flux_up_gpoints
+real, dimension(:,:,:,:), allocatable :: shortwave_flux_down_gpoints
+real, dimension(:,:,:,:), allocatable :: shortwave_flux_direct_gpoints
 
 !Start up mpi.
 call fms_init()
@@ -83,6 +92,24 @@ id_pfull = diag_axis_init("pfull", atm%layer, "mb", "Z")
 call rte%create(atm%num_layers, atm%longitude_bounds, atm%latitude_bounds)
 call rte%initialize_diagnostics(id_lon, id_lat, id_pfull, id_phalf, time)
 
+!Allocate output arrays.
+allocate(longwave_all_sky_flux_down(nx, ny, atm%num_layers+1))
+allocate(longwave_all_sky_flux_up(nx, ny, atm%num_layers+1))
+allocate(longwave_heating_rate(nx, ny, atm%num_layers))
+allocate(shortwave_all_sky_flux_up(nx, ny, atm%num_layers+1))
+allocate(shortwave_all_sky_flux_down(nx, ny, atm%num_layers+1))
+allocate(shortwave_heating_rate(nx, ny, atm%num_layers))
+if (rte%shortwave_method .eq. ckd) then
+  n = rte%shortwave_optics%k_distribution%get_ngpt()
+elseif (rte%shortwave_method .eq. lbl) then
+  n = rte%shortwave_lbl%gpoint_limits(2, size(rte%shortwave_lbl%gpoint_limits, 2))
+else
+  n = rte%shortwave_esf%gpoint_limits(2, size(rte%shortwave_esf%gpoint_limits, 2))
+endif
+allocate(shortwave_flux_up_gpoints(nx, ny, atm%num_layers+1, n))
+allocate(shortwave_flux_down_gpoints(nx, ny, atm%num_layers+1, n))
+allocate(shortwave_flux_direct_gpoints(nx, ny, atm%num_layers+1, n))
+
 do i = 1, atm%num_times
   !Calculate the current time.
   time = get_cal_time(atm%time(i), atm%time_units, atm%calendar)
@@ -137,7 +164,16 @@ do i = 1, atm%num_times
                      cloud_tracers, &
                      atm%land_fraction(:,:), &
                      time, &
-                     time_next)
+                     time_next, &
+                     longwave_all_sky_flux_down, &
+                     longwave_all_sky_flux_up, &
+                     shortwave_all_sky_flux_down, &
+                     shortwave_all_sky_flux_up, &
+                     longwave_heating_rate, &
+                     shortwave_heating_rate, &
+                     shortwave_flux_up_gpoints, &
+                     shortwave_flux_down_gpoints, &
+                     shortwave_flux_direct_gpoints)
   time = time_next
 enddo
 
@@ -151,6 +187,15 @@ do i = 1, size(clouds%cloud_data)
   deallocate(clouds%cloud_data(i)%ice_amt)
 enddo
 deallocate(clouds%cloud_data)
+deallocate(longwave_all_sky_flux_down)
+deallocate(longwave_all_sky_flux_up)
+deallocate(shortwave_all_sky_flux_down)
+deallocate(shortwave_all_sky_flux_up)
+deallocate(longwave_heating_rate)
+deallocate(shortwave_heating_rate)
+deallocate(shortwave_flux_up_gpoints)
+deallocate(shortwave_flux_down_gpoints)
+deallocate(shortwave_flux_direct_gpoints)
 call rte%destroy()
 call destroy_atmosphere(atm)
 call tracer_manager_end()
