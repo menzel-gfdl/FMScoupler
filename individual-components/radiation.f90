@@ -2,7 +2,8 @@ program main
 use am4, only: Atmosphere_t, create_atmosphere, destroy_atmosphere, h2o, o3, &
                read_time_slice
 use constants_mod, only: pi
-use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init
+use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init, &
+                            diag_manager_set_time_end, diag_send_complete
 use field_manager_mod, only: model_atmos
 use fms_mod, only: error_mesg, fatal, fms_end, fms_init
 use get_cal_time_mod, only: get_cal_time
@@ -57,7 +58,7 @@ time = get_cal_time(atm%time(1), atm%time_units, atm%calendar)
 if (atm%num_times .gt. 1) then
   dt = atm%time(2) - atm%time(1)
 else
-  dt = 0.
+  dt = 24.*3000.
 endif
 
 !Allocate cloud type arrays.
@@ -170,6 +171,8 @@ do i = 1, atm%num_times
                      shortwave_flux_up_vis, &
                      shortwave_flux_down_vis, &
                      shortwave_flux_direct_vis)
+  call diag_manager_set_time_end(time)
+  call diag_send_complete(time)
   time = time_next
 enddo
 
