@@ -24,7 +24,6 @@ type(Atmosphere_t) :: atm
 type(Radiation) :: rte
 type(time_type) :: time, time_next
 real, dimension(:,:,:), allocatable :: aerosol_relative_humidity
-real, dimension(:,:,:,:), allocatable :: aerosol_concentration
 real, dimension(:,:,:,:), allocatable :: cloud_tracers
 type(clouds_from_moist_block_type) :: clouds
 type(domain2d), pointer :: io_domain
@@ -79,8 +78,6 @@ cloud_tracers(:,:,:,:) = 0.
 
 !Allocate aerosol arrays.
 allocate(aerosol_relative_humidity(nx, ny, atm%num_layers))
-allocate(aerosol_concentration(nx, ny, atm%num_layers, num_tracers))
-aerosol_concentration(:,:,:,:) = 0.
 
 !Set up the diagnostics.
 call get_date(time, date(1), date(2), date(3), date(4), date(5), date(6))
@@ -155,7 +152,7 @@ do i = 1, atm%num_times
                      atm%surface_albedo_diffuse_ir(:,:), &
                      atm%daylight_fraction(:,:), &
                      atm%earth_sun_distance_fraction, &
-                     aerosol_concentration, &
+                     atm%aerosols, &
                      clouds, &
                      cloud_tracers, &
                      atm%land_fraction(:,:), &
@@ -177,7 +174,7 @@ do i = 1, atm%num_times
 enddo
 
 !Clean up.
-deallocate(aerosol_relative_humidity, aerosol_concentration, cloud_tracers)
+deallocate(aerosol_relative_humidity, cloud_tracers)
 call diag_manager_end(time)
 do i = 1, size(clouds%cloud_data)
   deallocate(clouds%cloud_data(i)%droplet_number)

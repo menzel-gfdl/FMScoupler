@@ -52,7 +52,9 @@ type, public :: Atmosphere_t
   real(kind=wp), dimension(:), allocatable :: time !< Time [hours or days or months].
   character(len=128) :: time_units !< Time units (i.e. days since 0000-00-00 00:00:00)
   real(kind=wp) :: total_solar_irradiance !< Total solar irradiance [W m-2].
+  real(kind=wp), dimension(:,:,:,:), allocatable :: aerosols !< Aerosol concentrations (block_size, layer, num_blocks, species).
 end type Atmosphere_t
+
 
 public :: create_atmosphere
 public :: read_time_slice
@@ -61,10 +63,11 @@ integer, parameter, public :: h2o = 1
 integer, parameter, public :: o3 = 2
 
 character(len=256) :: atmos_path = "none"
+logical :: cleansky = .false.
 logical :: clearsky = .false.
 integer, dimension(2) :: io_layout = (/1, 1/)
 integer, dimension(2) :: layout = (/0, 0/)
-namelist /am4_nml/ atmos_path, clearsky, io_layout, layout
+namelist /am4_nml/ atmos_path, cleansky, clearsky, io_layout, layout
 
 
 contains
@@ -158,19 +161,19 @@ subroutine create_atmosphere(atm)
   allocate(atm%surface_albedo_diffuse_uv(nx, ny))
   allocate(atm%surface_albedo_direct_ir(nx, ny))
   allocate(atm%surface_albedo_diffuse_ir(nx, ny))
-  if (.not. clearsky) then
-    allocate(atm%layer_thickness(nx, ny, atm%num_layers))
-    allocate(atm%stratiform_cloud_fraction(nx, ny, atm%num_layers))
-    allocate(atm%shallow_cloud_fraction(nx, ny, atm%num_layers))
-    allocate(atm%stratiform_cloud_ice_content(nx, ny, atm%num_layers))
-    allocate(atm%shallow_cloud_ice_content(nx, ny, atm%num_layers))
-    allocate(atm%stratiform_cloud_liquid_content(nx, ny, atm%num_layers))
-    allocate(atm%shallow_cloud_liquid_content(nx, ny, atm%num_layers))
-    allocate(atm%stratiform_droplet_number(nx, ny, atm%num_layers))
-    allocate(atm%shallow_droplet_number(nx, ny, atm%num_layers))
-  endif
+  allocate(atm%layer_thickness(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_cloud_fraction(nx, ny, atm%num_layers))
+  allocate(atm%shallow_cloud_fraction(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_cloud_ice_content(nx, ny, atm%num_layers))
+  allocate(atm%shallow_cloud_ice_content(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_cloud_liquid_content(nx, ny, atm%num_layers))
+  allocate(atm%shallow_cloud_liquid_content(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_droplet_number(nx, ny, atm%num_layers))
+  allocate(atm%shallow_droplet_number(nx, ny, atm%num_layers))
+  allocate(atm%aerosols(nx, ny, atm%num_layers, 16))
   call close_file(dataset)
 end subroutine create_atmosphere
+
 
 subroutine read_time_slice(atm, time_level)
 
@@ -225,7 +228,17 @@ subroutine read_time_slice(atm, time_level)
                  unlim_dim_level=time_level)
   call read_data(dataset, "infrared_diffuse_albedo", atm%surface_albedo_diffuse_ir, &
                  unlim_dim_level=time_level)
-  if (.not. clearsky) then
+  if (clearsky) then
+    atm%layer_thickness = 0.
+    atm%stratiform_cloud_fraction = 0.
+    atm%shallow_cloud_fraction = 0.
+    atm%stratiform_cloud_ice_content = 0.
+    atm%shallow_cloud_ice_content = 0.
+    atm%stratiform_cloud_liquid_content = 0.
+    atm%shallow_cloud_liquid_content = 0.
+    atm%stratiform_droplet_number = 0.
+    atm%shallow_droplet_number = 0.
+  else
     call read_data(dataset, "layer_thickness", atm%layer_thickness, &
                    unlim_dim_level=time_level)
     call read_data(dataset, "stratiform_cloud_fraction", atm%stratiform_cloud_fraction, &
@@ -244,6 +257,26 @@ subroutine read_time_slice(atm, time_level)
                    unlim_dim_level=time_level)
     call read_data(dataset, "shallow_droplet_number", atm%shallow_droplet_number, &
                    unlim_dim_level=time_level)
+  endif
+  if (cleansky) then
+    atm%aerosols = 0.
+  else
+    call read_data(dataset, "soa_concentration", atm%aerosols(:,:,:,1), unlim_dim_level=time_level)
+    call read_data(dataset, "dust1_concentration", atm%aerosols(:,:,:,2), unlim_dim_level=time_level)
+    call read_data(dataset, "dust2_concentration", atm%aerosols(:,:,:,3), unlim_dim_level=time_level)
+    call read_data(dataset, "dust3_concentration", atm%aerosols(:,:,:,4), unlim_dim_level=time_level)
+    call read_data(dataset, "dust4_concentration", atm%aerosols(:,:,:,5), unlim_dim_level=time_level)
+    call read_data(dataset, "dust5_concentration", atm%aerosols(:,:,:,6), unlim_dim_level=time_level)
+    call read_data(dataset, "sulfate_concentration", atm%aerosols(:,:,:,7), unlim_dim_level=time_level)
+    call read_data(dataset, "ssalt1_concentration", atm%aerosols(:,:,:,8), unlim_dim_level=time_level)
+    call read_data(dataset, "ssalt2_concentration", atm%aerosols(:,:,:,9), unlim_dim_level=time_level)
+    call read_data(dataset, "ssalt3_concentration", atm%aerosols(:,:,:,10), unlim_dim_level=time_level)
+    call read_data(dataset, "ssalt4_concentration", atm%aerosols(:,:,:,11), unlim_dim_level=time_level)
+    call read_data(dataset, "ssalt5_concentration", atm%aerosols(:,:,:,12), unlim_dim_level=time_level)
+    call read_data(dataset, "bcphobic_concentration", atm%aerosols(:,:,:,13), unlim_dim_level=time_level)
+    call read_data(dataset, "bcphilic_concentration", atm%aerosols(:,:,:,14), unlim_dim_level=time_level)
+    call read_data(dataset, "omphobic_concentration", atm%aerosols(:,:,:,15), unlim_dim_level=time_level)
+    call read_data(dataset, "omphilic_concentration", atm%aerosols(:,:,:,16), unlim_dim_level=time_level)
   endif
   call close_file(dataset)
 end subroutine read_time_slice
@@ -282,6 +315,7 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%stratiform_droplet_number)) deallocate(atm%stratiform_droplet_number)
   if (allocated(atm%shallow_droplet_number)) deallocate(atm%shallow_droplet_number)
   if (allocated(atm%land_fraction)) deallocate(atm%land_fraction)
+  if (allocated(atm%aerosols)) deallocate(atm%aerosols)
 end subroutine destroy_atmosphere
 
 
