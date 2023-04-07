@@ -15,6 +15,7 @@ use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 use radiation_context, only: all_, clean, clean_clear, clear, RadiationContext
 use solar_constant, only: SolarConstant
 use solar_spectrum, only: SolarSpectrum
+use time_interp_external2_mod, only: time_interp_external_init
 use time_manager_mod, only: get_date, julian, print_time, set_calendar_type, time_manager_init, &
                             time_type
 use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
@@ -101,6 +102,7 @@ call fms_init()
 call time_manager_init()
 call tracer_manager_init()
 call grid_init()
+call time_interp_external_init()
 
 !Read the namelist.
 read(input_nml_file, nml=standalone_radiation_nml, iostat=ios)
@@ -112,11 +114,6 @@ endif
 
 !Read in input data.
 call create_atmosphere(atm)
-num_bands = radiation_context%longwave_gas_optics%num_bands()
-allocate(surface_emissivity(num_bands, num_columns))
-surface_emissivity(:, :) = 1.
-call solar_flux_constant%create("solar_flux", trim(solar_constant_path))
-call solar_flux_spectrum%create(trim(solar_spectrum_path))
 
 !Set the model time.
 if (trim(atm%calendar) .eq. "julian") then
@@ -130,6 +127,10 @@ if (atm%num_times .gt. 1) then
 else
   dt = 24.*3000.
 endif
+
+!Read in the solar data.
+call solar_flux_constant%create("solar_flux", trim(solar_constant_path))
+call solar_flux_spectrum%create(trim(solar_spectrum_path))
 
 !Get horizontal domain size.
 io_domain => mpp_get_io_domain(atm%domain)
@@ -146,7 +147,7 @@ call get_date(time, date(1), date(2), date(3), date(4), date(5), date(6))
 call diag_manager_init(time_init=date)
 
 !Initialize the radiation object.
-call radiation_context%create([num_columns], 1, num_layers, solar_flux_spectrum%grid, &
+call radiation_context%create([num_columns], num_layers, 1, solar_flux_spectrum%grid, &
                               solar_flux_spectrum%flux, atm%longitude_bounds, atm%latitude_bounds)
 
 !Initialize the diagnostics.
@@ -162,6 +163,11 @@ shortwave_axis_id = diag_axis_init("shortwave_band", shortwave_band_limits(2, :)
 do i = 1, size(flux_diags)
   call flux_diags(i)%create(i, time, axes, longwave_axis_id, shortwave_axis_id)
 enddo
+
+!Set the surface emissivity.
+num_bands = radiation_context%longwave_gas_optics%num_bands()
+allocate(surface_emissivity(num_bands, num_columns))
+surface_emissivity(:, :) = 1.
 
 !Calculate variables need for dealing with the land spectral decomposition.
 call radiation_context%shortwave_gas_optics%band_limits(shortwave_band_limits)
@@ -244,7 +250,7 @@ do t = 1, atm%num_times
                                                 stratiform_liquid_content, 1)
 
   !Calculate aerosol optics.
-  call radiation_context%calculate_aerosol_optics(atm%ppmv, aerosol_relative_humidity, &
+  call radiation_context%calculate_aerosol_optics(atm%aerosols, aerosol_relative_humidity, &
                                                   atm%level_pressure, layer_thickness, time, &
                                                   1, 1, 1)
 
@@ -328,6 +334,7 @@ do t = 1, atm%num_times
                                   shortwave_gpoint_limits, &
                                   radiation_context%shortwave_fluxes(1), &
                                   num_lon, num_lat, 1, 1, 1, time)
+  deallocate(diffuse_surface_albedo, direct_surface_albedo)
   deallocate(longwave_gpoint_limits, shortwave_gpoint_limits)
 
   !Write out diagnostics.

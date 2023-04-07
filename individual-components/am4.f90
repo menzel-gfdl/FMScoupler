@@ -16,43 +16,43 @@ private
 
 type, public :: Atmosphere_t
   character(len=128) :: calendar !< Calendar type for the time axis.
-  real(kind=wp), dimension(:,:), allocatable :: daylight_fraction !< Daylight correction factor (block_size, num_blocks).
+  real(kind=wp), dimension(:,:), allocatable :: daylight_fraction !< Daylight correction factor (lon, lat).
   type(domain2d) :: domain !< 2d domain.
   real(kind=wp) :: earth_sun_distance_fraction !< Earth sun distance fraction.
-  real(kind=wp), dimension(:,:), allocatable :: land_fraction !< Land fraction (block_size, num_blocks).
-  real(kind=wp), dimension(:), allocatable :: latitude !< Y dimension data.
-  real(kind=wp), dimension(:,:), allocatable :: latitude_bounds !< Latitude of cell vertices [degrees].
-  real(kind=wp), dimension(:), allocatable :: layer !< Pressure [mb].
-  real(kind=wp), dimension(:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: layer_temperature !< Temperature [K] (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: layer_thickness !< Thickness [m] (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:), allocatable :: level !< Pressure [mb].
-  real(kind=wp), dimension(:,:,:), allocatable :: level_pressure !< Pressure [Pa] (blocks_size level, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: level_temperature !< Temperature [K] (block_size, level, num_blocks).
-  real(kind=wp), dimension(:), allocatable :: longitude !< X dimension data.
-  real(kind=wp), dimension(:,:), allocatable :: longitude_bounds !< Longitude of cell vertices [degrees].
+  real(kind=wp), dimension(:,:), allocatable :: land_fraction !< Land fraction (lon, lat).
+  real(kind=wp), dimension(:), allocatable :: latitude !< Y dimension data (lat).
+  real(kind=wp), dimension(:,:), allocatable :: latitude_bounds !< Latitude of cell vertices [degrees] (lon, lat).
+  real(kind=wp), dimension(:), allocatable :: layer !< Pressure [mb] (layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_pressure !< Pressure [Pa] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_temperature !< Temperature [K] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: layer_thickness !< Thickness [m] (lon, lat, layer).
+  real(kind=wp), dimension(:), allocatable :: level !< Pressure [mb] (level).
+  real(kind=wp), dimension(:,:,:), allocatable :: level_pressure !< Pressure [Pa] (lon, lat, level).
+  real(kind=wp), dimension(:,:,:), allocatable :: level_temperature !< Temperature [K] (lon, lat, level).
+  real(kind=wp), dimension(:), allocatable :: longitude !< X dimension data (lon).
+  real(kind=wp), dimension(:,:), allocatable :: longitude_bounds !< Longitude of cell vertices [degrees] (lon, lat).
   integer :: num_layers !< Number of layers.
   integer :: num_levels !< Number of levels.
   integer :: num_times !< Number of times.
-  real(kind=wp), dimension(:,:,:,:), allocatable :: ppmv !< Molecular abundancee (block_size, level, num_blocks, molecule).
-  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks)
-  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks)
-  real(kind=wp), dimension(:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: solar_zenith_angle !< Solar zenith angle [degrees] (block_size, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (block_size, layer, num_blocks)
-  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (block_size, layer, num_blocks)
-  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (block_size, layer, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (block_size, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (block_size, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (block_size, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_uv !< Surface albedo for ultraviolet direct beam (block_size, num_blocks).
-  real(kind=wp), dimension(:,:), allocatable :: surface_temperature !< Surface temperature [K] (block_size, num_blocks).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: ppmv !< Molecular abundancee (lon, lat, layer, molecule).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_fraction !< Saturation volume fraction (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_ice_content !< Cloud ice water content [g m-3]  (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_cloud_liquid_content !< Cloud liquid water content [g m-3] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: shallow_droplet_number !< Cloud liquid droplet number [km-1] (lon, lat, layer).
+  real(kind=wp), dimension(:,:), allocatable :: solar_zenith_angle !< Solar zenith angle [degrees] (on, lat).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_fraction !< Saturation volume fraction (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (lon, lat, layer).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (lon, lat).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (lon, lat).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (lon, lat).
+  real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_uv !< Surface albedo for ultraviolet direct beam (lon, lat).
+  real(kind=wp), dimension(:,:), allocatable :: surface_temperature !< Surface temperature [K] (lon, lat).
   real(kind=wp), dimension(:), allocatable :: time !< Time [hours or days or months].
   character(len=128) :: time_units !< Time units (i.e. days since 0000-00-00 00:00:00)
   real(kind=wp) :: total_solar_irradiance !< Total solar irradiance [W m-2].
-  real(kind=wp), dimension(:,:,:,:), allocatable :: aerosols !< Aerosol concentrations (block_size, layer, num_blocks, species).
+  real(kind=wp), dimension(:,:,:,:), allocatable :: aerosols !< Aerosol concentrations (lon, lat, layer, species).
 end type Atmosphere_t
 
 
