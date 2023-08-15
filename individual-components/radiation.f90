@@ -26,6 +26,10 @@ implicit none
 
 real, dimension(:,:,:), allocatable :: aerosol_relative_humidity
 type(Atmosphere_t), target :: atm
+real, dimension(:), allocatable :: average_cloud
+real, dimension(:), allocatable :: average_high_cloud
+real, dimension(:), allocatable :: average_low_cloud
+real, dimension(:), allocatable :: average_mid_cloud
 integer, dimension(4) :: axes
 integer :: column
 real, dimension(:,:), pointer :: convective_droplet_number
@@ -62,7 +66,7 @@ integer :: longwave_axis_id
 real, dimension(:,:), allocatable :: longwave_band_limits
 integer, dimension(:,:), allocatable :: longwave_gpoint_limits
 integer :: num_bands
-integer :: num_columns
+integer, dimension(1) :: num_columns
 integer :: num_lat
 integer :: num_layers
 integer :: num_levels
@@ -135,9 +139,15 @@ call solar_flux_spectrum%create(trim(solar_spectrum_path))
 !Get horizontal domain size.
 io_domain => mpp_get_io_domain(atm%domain)
 call mpp_get_compute_domain(io_domain, xsize=num_lon, ysize=num_lat)
-num_columns = num_lat*num_lon
+num_columns(1) = num_lat*num_lon
 num_layers = atm%num_layers
 num_levels = num_layers + 1
+
+!Allocate cloud arrays.
+allocate(average_cloud(num_columns(1)))
+allocate(average_high_cloud(num_columns(1)))
+allocate(average_low_cloud(num_columns(1)))
+allocate(average_mid_cloud(num_columns(1)))
 
 !Allocate aerosol arrays.
 allocate(aerosol_relative_humidity(num_lon, num_lat, num_layers))
@@ -147,7 +157,7 @@ call get_date(time, date(1), date(2), date(3), date(4), date(5), date(6))
 call diag_manager_init(time_init=date)
 
 !Initialize the radiation object.
-call radiation_context%create([num_columns], num_layers, 1, solar_flux_spectrum%grid, &
+call radiation_context%create(num_columns, num_layers, size(num_columns), solar_flux_spectrum%grid, &
                               solar_flux_spectrum%flux, atm%longitude_bounds, atm%latitude_bounds)
 
 !Initialize the diagnostics.
@@ -166,7 +176,7 @@ enddo
 
 !Set the surface emissivity.
 num_bands = radiation_context%longwave_gas_optics%num_bands()
-allocate(surface_emissivity(num_bands, num_columns))
+allocate(surface_emissivity(num_bands, num_columns(1)))
 surface_emissivity(:, :) = 1.
 
 !Calculate variables need for dealing with the land spectral decomposition.
@@ -217,51 +227,54 @@ do t = 1, atm%num_times
   call radiation_context%update(time)
 
   !Update gas concentrations.
-  water_vapor(1:num_columns, 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, h2o)
-  ozone(1:num_columns, 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, o3)
+  water_vapor(1:num_columns(1), 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, h2o)
+  ozone(1:num_columns(1), 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, o3)
   call radiation_context%update_concentrations(water_vapor, ozone, 1)
 
   !Calculate gas optics.
-  layer_pressure(1:num_columns, 1:num_layers) => atm%layer_pressure(1:num_lon, 1:num_lat, 1:num_layers)
-  level_pressure(1:num_columns, 1:num_levels) => atm%level_pressure(1:num_lon, 1:num_lat, 1:num_levels)
-  layer_temperature(1:num_columns, 1:num_layers) => atm%layer_temperature(1:num_lon, 1:num_lat, 1:num_layers)
-  level_temperature(1:num_columns, 1:num_levels) => atm%level_temperature(1:num_lon, 1:num_lat, 1:num_levels)
-  surface_temperature(1:num_columns) => atm%surface_temperature(1:num_lon, 1:num_lat)
+  layer_pressure(1:num_columns(1), 1:num_layers) => atm%layer_pressure(1:num_lon, 1:num_lat, 1:num_layers)
+  level_pressure(1:num_columns(1), 1:num_levels) => atm%level_pressure(1:num_lon, 1:num_lat, 1:num_levels)
+  layer_temperature(1:num_columns(1), 1:num_layers) => atm%layer_temperature(1:num_lon, 1:num_lat, 1:num_layers)
+  level_temperature(1:num_columns(1), 1:num_levels) => atm%level_temperature(1:num_lon, 1:num_lat, 1:num_levels)
+  surface_temperature(1:num_columns(1)) => atm%surface_temperature(1:num_lon, 1:num_lat)
+  zenith(1:num_columns(1)) => atm%solar_zenith_angle(1:num_lon, 1:num_lat)
   call radiation_context%calculate_gas_optics(layer_pressure, level_pressure, &
                                               layer_temperature, level_temperature, &
-                                              surface_temperature, 1)
+                                              surface_temperature, 1, zenith)
 
   !Calculate cloud optics.
-  land_fraction(1:num_columns) => atm%land_fraction(1:num_lon, 1:num_lat)
-  convective_droplet_number(1:num_columns, 1:num_layers) => atm%shallow_droplet_number(1:num_lon, 1:num_lat, 1:num_layers)
-  convective_fraction(1:num_columns, 1:num_layers) => atm%shallow_cloud_fraction(1:num_lon, 1:num_lat, 1:num_layers)
-  convective_liquid_content(1:num_columns, 1:num_layers) => atm%shallow_cloud_liquid_content(1:num_lon, 1:num_lat, 1:num_layers)
-  convective_ice_content(1:num_columns, 1:num_layers) => atm%shallow_cloud_ice_content(1:num_lon, 1:num_lat, 1:num_layers)
-  stratiform_droplet_number(1:num_columns, 1:num_layers) => atm%stratiform_droplet_number(1:num_lon, 1:num_lat, 1:num_layers)
-  stratiform_fraction(1:num_columns, 1:num_layers) => atm%stratiform_cloud_fraction(1:num_lon, 1:num_lat, 1:num_layers)
-  stratiform_liquid_content(1:num_columns, 1:num_layers) => atm%stratiform_cloud_liquid_content(1:num_lon, 1:num_lat, 1:num_layers)
-  stratiform_ice_content(1:num_columns, 1:num_layers) => atm%stratiform_cloud_ice_content(1:num_lon, 1:num_lat, 1:num_layers)
-  layer_thickness(1:num_columns, 1:num_layers) => atm%layer_thickness(1:num_lon, 1:num_lat, 1:num_layers)
+  land_fraction(1:num_columns(1)) => atm%land_fraction(1:num_lon, 1:num_lat)
+  convective_droplet_number(1:num_columns(1), 1:num_layers) => atm%shallow_droplet_number(1:num_lon, 1:num_lat, 1:num_layers)
+  convective_fraction(1:num_columns(1), 1:num_layers) => atm%shallow_cloud_fraction(1:num_lon, 1:num_lat, 1:num_layers)
+  convective_liquid_content(1:num_columns(1), 1:num_layers) => atm%shallow_cloud_liquid_content(1:num_lon, 1:num_lat, 1:num_layers)
+  convective_ice_content(1:num_columns(1), 1:num_layers) => atm%shallow_cloud_ice_content(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_droplet_number(1:num_columns(1), 1:num_layers) => atm%stratiform_droplet_number(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_fraction(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_fraction(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_liquid_content(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_liquid_content(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_ice_content(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_ice_content(1:num_lon, 1:num_lat, 1:num_layers)
+  layer_thickness(1:num_columns(1), 1:num_layers) => atm%layer_thickness(1:num_lon, 1:num_lat, 1:num_layers)
   call radiation_context%calculate_cloud_optics(layer_pressure, layer_temperature, land_fraction, &
                                                 layer_thickness, convective_droplet_number, &
                                                 convective_fraction, convective_ice_content, &
                                                 convective_liquid_content, stratiform_droplet_number, &
                                                 stratiform_fraction, stratiform_ice_content, &
-                                                stratiform_liquid_content, 1)
+                                                stratiform_liquid_content, 1, level_pressure, &
+                                                average_high_cloud, average_mid_cloud, average_low_cloud, &
+                                                average_cloud)
 
   !Calculate aerosol optics.
   call radiation_context%calculate_aerosol_optics(atm%aerosols, aerosol_relative_humidity, &
                                                   atm%level_pressure, layer_thickness, time, &
-                                                  1, 1, 1)
+                                                  1, num_lon, 1, num_lat, 1)
 
   !Calculate the surface albedo.
-  diffuse_albedo_nir(1:num_columns) => atm%surface_albedo_diffuse_ir(1:num_lon, 1:num_lat)
-  direct_albedo_nir(1:num_columns) => atm%surface_albedo_direct_ir(1:num_lon, 1:num_lat)
-  diffuse_albedo_vis(1:num_columns) => atm%surface_albedo_diffuse_uv(1:num_lon, 1:num_lat)
-  direct_albedo_vis(1:num_columns) => atm%surface_albedo_direct_uv(1:num_lon, 1:num_lat)
+  diffuse_albedo_nir(1:num_columns(1)) => atm%surface_albedo_diffuse_ir(1:num_lon, 1:num_lat)
+  direct_albedo_nir(1:num_columns(1)) => atm%surface_albedo_direct_ir(1:num_lon, 1:num_lat)
+  diffuse_albedo_vis(1:num_columns(1)) => atm%surface_albedo_diffuse_uv(1:num_lon, 1:num_lat)
+  direct_albedo_vis(1:num_columns(1)) => atm%surface_albedo_direct_uv(1:num_lon, 1:num_lat)
   num_bands = radiation_context%shortwave_gas_optics%num_bands()
-  allocate(diffuse_surface_albedo(num_bands, num_columns))
-  allocate(direct_surface_albedo(num_bands, num_columns))
+  allocate(diffuse_surface_albedo(num_bands, num_columns(1)))
+  allocate(direct_surface_albedo(num_bands, num_columns(1)))
   do i = 1, num_bands
     if (i .lt. last_infrared_band) then
       diffuse_surface_albedo(i, :) = diffuse_albedo_nir(:)
@@ -278,7 +291,7 @@ do t = 1, atm%num_times
   enddo
 
   !Calculate the incident solar flux.
-  allocate(total_solar_flux(num_columns))
+  allocate(total_solar_flux(num_columns(1)))
   total_solar_flux = sum(radiation_context%toa(1)%flux, 2)
   do j = 1, num_lat
     do i = 1, num_lon
@@ -293,7 +306,6 @@ do t = 1, atm%num_times
 
   !Calculate the fluxes.
   !Clean-clear sky.
-  zenith(1:num_columns) => atm%solar_zenith_angle(1:num_lon, 1:num_lat)
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean_clear, 1)
   call radiation_context%calculate_shortwave_fluxes(zenith, direct_surface_albedo, &
                                                     diffuse_surface_albedo, clean_clear, 1)
@@ -303,7 +315,7 @@ do t = 1, atm%num_times
                                          radiation_context%longwave_fluxes(1), &
                                          shortwave_gpoint_limits, &
                                          radiation_context%shortwave_fluxes(1), &
-                                         num_lon, num_lat, 1, 1, 1, time)
+                                         num_lon, num_lat, 1, 1, 1, time, level_pressure)
 
   !Clean sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean, 1)
@@ -313,7 +325,7 @@ do t = 1, atm%num_times
                                    radiation_context%longwave_fluxes(1), &
                                    shortwave_gpoint_limits, &
                                    radiation_context%shortwave_fluxes(1), &
-                                   num_lon, num_lat, 1, 1, 1, time)
+                                   num_lon, num_lat, 1, 1, 1, time, level_pressure)
 
   !Clear sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clear, 1)
@@ -323,7 +335,7 @@ do t = 1, atm%num_times
                                    radiation_context%longwave_fluxes(1), &
                                    shortwave_gpoint_limits, &
                                    radiation_context%shortwave_fluxes(1), &
-                                   num_lon, num_lat, 1, 1, 1, time)
+                                   num_lon, num_lat, 1, 1, 1, time, level_pressure)
 
   !All sky.$
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, all_, 1)
@@ -333,7 +345,7 @@ do t = 1, atm%num_times
                                   radiation_context%longwave_fluxes(1), &
                                   shortwave_gpoint_limits, &
                                   radiation_context%shortwave_fluxes(1), &
-                                  num_lon, num_lat, 1, 1, 1, time)
+                                  num_lon, num_lat, 1, 1, 1, time, level_pressure)
   deallocate(diffuse_surface_albedo, direct_surface_albedo)
   deallocate(longwave_gpoint_limits, shortwave_gpoint_limits)
 
@@ -344,6 +356,10 @@ do t = 1, atm%num_times
 enddo
 
 !Clean up.
+deallocate(average_cloud)
+deallocate(average_high_cloud)
+deallocate(average_low_cloud)
+deallocate(average_mid_cloud)
 deallocate(aerosol_relative_humidity)
 call diag_manager_end(time)
 call radiation_context%destroy()
