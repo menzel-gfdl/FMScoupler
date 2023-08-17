@@ -1,6 +1,8 @@
 program main
+use aerosol_diagnostics, only: AerosolDiagnostics
 use am4, only: Atmosphere_t, create_atmosphere, destroy_atmosphere, h2o, o3, &
                read_time_slice
+use cloud_diagnostics, only: CloudDiagnostics
 use constants_mod, only: pi
 use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init, &
                             diag_manager_set_time_end, diag_send_complete
@@ -23,7 +25,7 @@ use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
 use utilities, only: integrate
 implicit none
 
-
+type(AerosolDiagnostics), dimension(:), allocatable :: aerosol_species_diags
 real, dimension(:,:,:), allocatable :: aerosol_relative_humidity
 type(Atmosphere_t), target :: atm
 real, dimension(:), allocatable :: average_cloud
@@ -31,6 +33,8 @@ real, dimension(:), allocatable :: average_high_cloud
 real, dimension(:), allocatable :: average_low_cloud
 real, dimension(:), allocatable :: average_mid_cloud
 integer, dimension(4) :: axes
+real, dimension(:,:,:), allocatable :: buffer
+type(CloudDiagnostics) :: cloud_diags
 integer :: column
 real, dimension(:,:), pointer :: convective_droplet_number
 real, dimension(:,:), pointer :: convective_fraction
@@ -65,6 +69,7 @@ integer :: logfile_handle
 integer :: longwave_axis_id
 real, dimension(:,:), allocatable :: longwave_band_limits
 integer, dimension(:,:), allocatable :: longwave_gpoint_limits
+integer :: n
 integer :: num_bands
 integer, dimension(1) :: num_columns
 integer :: num_lat
@@ -173,6 +178,13 @@ shortwave_axis_id = diag_axis_init("shortwave_band", shortwave_band_limits(2, :)
 do i = 1, size(flux_diags)
   call flux_diags(i)%create(i, time, axes, longwave_axis_id, shortwave_axis_id)
 enddo
+call cloud_diags%create(time, axes(:2))
+allocate(aerosol_species_diags(size(radiation_context%aerosol_optics%family)))
+do i = 1, size(radiation_context%aerosol_optics%family)
+  call aerosol_species_diags(i)%create(time, axes, radiation_context%aerosol_optics%family(i)%name, &
+                                       radiation_context%aerosol_optics%family(i)%name)
+enddo
+
 
 !Set the surface emissivity.
 num_bands = radiation_context%longwave_gas_optics%num_bands()
@@ -261,11 +273,23 @@ do t = 1, atm%num_times
                                                 stratiform_liquid_content, 1, level_pressure, &
                                                 average_high_cloud, average_mid_cloud, average_low_cloud, &
                                                 average_cloud)
+  call cloud_diags%save_data(average_high_cloud, average_mid_cloud, average_low_cloud, average_cloud, &
+                             num_lon, num_lat, 1, 1, time)
 
   !Calculate aerosol optics.
   call radiation_context%calculate_aerosol_optics(atm%aerosols, aerosol_relative_humidity, &
                                                   atm%level_pressure, layer_thickness, time, &
                                                   1, num_lon, 1, num_lat, 1)
+  allocate(buffer(num_lon, num_lat, num_layers))
+  do i = 1, size(radiation_context%aerosol_optics%family)
+    buffer = 0.
+    do j = 1, size(radiation_context%aerosol_optics%family(i)%indices)
+      n = radiation_context%aerosol_optics%family(i)%indices(j)
+      buffer(:, :, :) = buffer(:, :, :) + atm%aerosols(1:num_lon, 1:num_lat, :, n)
+    enddo
+    call aerosol_species_diags(i)%save_data(buffer, 1, 1, 1, time)
+  enddo
+  deallocate(buffer)
 
   !Calculate the surface albedo.
   diffuse_albedo_nir(1:num_columns(1)) => atm%surface_albedo_diffuse_ir(1:num_lon, 1:num_lat)
@@ -361,10 +385,15 @@ deallocate(average_high_cloud)
 deallocate(average_low_cloud)
 deallocate(average_mid_cloud)
 deallocate(aerosol_relative_humidity)
+if (allocated(aerosol_species_diags)) then
+  do i = 1, size(aerosol_species_diags)
+    call aerosol_species_diags(i)%destroy()
+  enddo
+  deallocate(aerosol_species_diags)
+endif
 call diag_manager_end(time)
 call radiation_context%destroy()
 call destroy_atmosphere(atm)
 call tracer_manager_end()
 call fms_end()
-
 end program main
