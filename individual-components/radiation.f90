@@ -40,6 +40,8 @@ real, dimension(:,:), pointer :: convective_droplet_number
 real, dimension(:,:), pointer :: convective_fraction
 real, dimension(:,:), pointer :: convective_ice_content
 real, dimension(:,:), pointer :: convective_liquid_content
+real, dimension(:), allocatable :: cloud_top_pressure
+real, dimension(:), allocatable :: cloud_top_temperature
 integer, dimension(6) :: date
 real :: dt
 real, dimension(:), pointer :: diffuse_albedo_nir
@@ -50,12 +52,13 @@ real, dimension(:,:), allocatable :: diffuse_surface_albedo
 real, dimension(:,:), allocatable :: direct_surface_albedo
 type(FluxDiagnostics), dimension(4) :: flux_diags
 integer :: i
-integer :: ios
+real, dimension(:,:), allocatable :: ice_size
 integer :: id_lat
 integer :: id_lon
 integer :: id_pfull
 integer :: id_phalf
 type(domain2d), pointer :: io_domain
+integer :: ios
 integer :: j
 integer :: k
 real, dimension(:), pointer :: land_fraction
@@ -65,6 +68,7 @@ real, dimension(:,:), pointer :: layer_temperature
 real, dimension(:,:), pointer :: layer_thickness
 real, dimension(:,:), pointer :: level_pressure
 real, dimension(:,:), pointer :: level_temperature
+real, dimension(:,:), allocatable :: liquid_size
 integer :: logfile_handle
 integer :: longwave_axis_id
 real, dimension(:,:), allocatable :: longwave_band_limits
@@ -78,6 +82,8 @@ integer :: num_levels
 integer :: num_lon
 real, dimension(:,:), pointer :: ozone
 type(RadiationContext) :: radiation_context
+real, dimension(:,:), allocatable :: rain_size
+real, dimension(:,:), allocatable :: snow_size
 real, dimension(:,:), allocatable :: surface_emissivity !(lon, lat).
 type(time_type) :: time
 type(time_type) :: time_next
@@ -90,6 +96,11 @@ real, dimension(:,:), pointer :: stratiform_droplet_number
 real, dimension(:,:), pointer :: stratiform_fraction
 real, dimension(:,:), pointer :: stratiform_ice_content
 real, dimension(:,:), pointer :: stratiform_liquid_content
+real, dimension(:,:), pointer :: stratiform_ice_number
+real, dimension(:,:), pointer :: stratiform_rain
+real, dimension(:,:), pointer :: stratiform_rain_size
+real, dimension(:,:), pointer :: stratiform_snow
+real, dimension(:,:), pointer :: stratiform_snow_size
 real :: surface_albedo_weight !Weighting needed to combine "nir" and "vis" albedo values in
                               !in the band that contains the infrared cut-off.
 real, dimension(:), pointer :: surface_temperature
@@ -97,6 +108,15 @@ integer :: t
 real, dimension(:), allocatable :: total_solar_flux
 real, dimension(:,:), pointer :: water_vapor
 real, dimension(:), pointer :: zenith
+
+!Physics driver parameters.
+real, parameter :: max_diam_drop = 50.e-6
+real, parameter :: min_diam_ice = 10.e-6
+real, parameter :: min_diam_drop = 2.e-6
+real, parameter :: n_min = 1.e6
+real, parameter :: dcs = 200.e-6
+real, parameter :: qcvar = 1.
+real, parameter :: qmin = 1.e-10
 
 !Runtime options.
 integer :: near_infrared_cutoff = 14600 !Wavenumber [cm-1] that distinguishes the visible from the near-infrared.
@@ -153,6 +173,12 @@ allocate(average_cloud(num_columns(1)))
 allocate(average_high_cloud(num_columns(1)))
 allocate(average_low_cloud(num_columns(1)))
 allocate(average_mid_cloud(num_columns(1)))
+allocate(cloud_top_pressure(num_columns(1)))
+allocate(cloud_top_temperature(num_columns(1)))
+allocate(ice_size(num_columns(1), num_layers))
+allocate(liquid_size(num_columns(1), num_layers))
+allocate(rain_size(num_columns(1), num_layers))
+allocate(snow_size(num_columns(1), num_layers))
 
 !Allocate aerosol arrays.
 allocate(aerosol_relative_humidity(num_lon, num_lat, num_layers))
@@ -163,7 +189,9 @@ call diag_manager_init(time_init=date)
 
 !Initialize the radiation object.
 call radiation_context%create(num_columns, num_layers, size(num_columns), solar_flux_spectrum%grid, &
-                              solar_flux_spectrum%flux, atm%longitude_bounds, atm%latitude_bounds)
+                              solar_flux_spectrum%flux, atm%longitude_bounds, atm%latitude_bounds, &
+                              max_diam_drop, min_diam_ice, min_diam_drop, n_min, dcs, qcvar, qmin)
+
 
 !Initialize the diagnostics.
 id_lon = diag_axis_init("lon", atm%longitude, "degrees_east", "X", domain2=atm%domain)
@@ -264,17 +292,26 @@ do t = 1, atm%num_times
   stratiform_fraction(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_fraction(1:num_lon, 1:num_lat, 1:num_layers)
   stratiform_liquid_content(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_liquid_content(1:num_lon, 1:num_lat, 1:num_layers)
   stratiform_ice_content(1:num_columns(1), 1:num_layers) => atm%stratiform_cloud_ice_content(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_ice_number(1:num_columns(1), 1:num_layers) => atm%stratiform_ice_number(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_rain(1:num_columns(1), 1:num_layers) => atm%stratiform_rain(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_rain_size(1:num_columns(1), 1:num_layers) => atm%stratiform_rain_size(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_snow(1:num_columns(1), 1:num_layers) => atm%stratiform_snow(1:num_lon, 1:num_lat, 1:num_layers)
+  stratiform_snow_size(1:num_columns(1), 1:num_layers) => atm%stratiform_snow_size(1:num_lon, 1:num_lat, 1:num_layers)
   layer_thickness(1:num_columns(1), 1:num_layers) => atm%layer_thickness(1:num_lon, 1:num_lat, 1:num_layers)
-  call radiation_context%calculate_cloud_optics(layer_pressure, layer_temperature, land_fraction, &
+  call radiation_context%calculate_cloud_optics(layer_pressure, level_pressure, layer_temperature, &
+                                                level_temperature, land_fraction, &
                                                 layer_thickness, convective_droplet_number, &
                                                 convective_fraction, convective_ice_content, &
                                                 convective_liquid_content, stratiform_droplet_number, &
-                                                stratiform_fraction, stratiform_ice_content, &
-                                                stratiform_liquid_content, 1, level_pressure, &
+                                                stratiform_fraction, stratiform_ice_content, stratiform_ice_number, &
+                                                stratiform_liquid_content, stratiform_rain, stratiform_rain_size, &
+                                                stratiform_snow, stratiform_snow_size, 1, &
                                                 average_high_cloud, average_mid_cloud, average_low_cloud, &
-                                                average_cloud)
+                                                average_cloud, cloud_top_pressure, cloud_top_temperature, &
+                                                liquid_size, ice_size, rain_size, snow_size)
   call cloud_diags%save_data(average_high_cloud, average_mid_cloud, average_low_cloud, average_cloud, &
-                             num_lon, num_lat, 1, 1, time)
+                             cloud_top_pressure, cloud_top_temperature, liquid_size, ice_size, &
+                             rain_size, snow_size, num_lon, num_lat, 1, 1, time)
 
   !Calculate aerosol optics.
   call radiation_context%calculate_aerosol_optics(atm%aerosols, aerosol_relative_humidity, &
@@ -384,6 +421,12 @@ deallocate(average_cloud)
 deallocate(average_high_cloud)
 deallocate(average_low_cloud)
 deallocate(average_mid_cloud)
+deallocate(cloud_top_pressure)
+deallocate(cloud_top_temperature)
+deallocate(ice_size)
+deallocate(liquid_size)
+deallocate(rain_size)
+deallocate(snow_size)
 deallocate(aerosol_relative_humidity)
 if (allocated(aerosol_species_diags)) then
   do i = 1, size(aerosol_species_diags)

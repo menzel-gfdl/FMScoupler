@@ -44,6 +44,11 @@ type, public :: Atmosphere_t
   real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_ice_content !< Cloud ice water content [g m-3]  (lon, lat, layer).
   real(kind=wp), dimension(:,:,:), allocatable :: stratiform_cloud_liquid_content !< Cloud liquid water content [g m-3] (lon, lat, layer).
   real(kind=wp), dimension(:,:,:), allocatable :: stratiform_droplet_number !< Cloud liquid droplet number [km-1] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_ice_number !< Cloud ice crystal number [???] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_rain !< Rain droplet number [???] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_rain_size !< Rain droplet size [microns] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_snow !< Snow crystal number [???] (lon, lat, layer).
+  real(kind=wp), dimension(:,:,:), allocatable :: stratiform_snow_size !< Snow crystal sizse [microns] (lon, lat, layer).
   real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_ir !< Surface albedo for infrared diffuse beam (lon, lat).
   real(kind=wp), dimension(:,:), allocatable :: surface_albedo_diffuse_uv !< Surface albedo for ultraviolet diffuse beam (lon, lat).
   real(kind=wp), dimension(:,:), allocatable :: surface_albedo_direct_ir !< Surface albedo for infrared direct beam (lon, lat).
@@ -170,6 +175,11 @@ subroutine create_atmosphere(atm)
   allocate(atm%shallow_cloud_liquid_content(nx, ny, atm%num_layers))
   allocate(atm%stratiform_droplet_number(nx, ny, atm%num_layers))
   allocate(atm%shallow_droplet_number(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_ice_number(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_rain(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_rain_size(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_snow(nx, ny, atm%num_layers))
+  allocate(atm%stratiform_snow_size(nx, ny, atm%num_layers))
   allocate(atm%aerosols(nx, ny, atm%num_layers, 16))
   call close_file(dataset)
 end subroutine create_atmosphere
@@ -238,6 +248,11 @@ subroutine read_time_slice(atm, time_level)
     atm%shallow_cloud_liquid_content = 0.
     atm%stratiform_droplet_number = 0.
     atm%shallow_droplet_number = 0.
+    atm%stratiform_ice_number = 0.
+    atm%stratiform_rain = 0.
+    atm%stratiform_rain_size = 0.
+    atm%stratiform_snow = 0.
+    atm%stratiform_snow_size = 0.
   else
     call read_data(dataset, "layer_thickness", atm%layer_thickness, &
                    unlim_dim_level=time_level)
@@ -256,6 +271,16 @@ subroutine read_time_slice(atm, time_level)
     call read_data(dataset, "stratiform_droplet_number", atm%stratiform_droplet_number, &
                    unlim_dim_level=time_level)
     call read_data(dataset, "shallow_droplet_number", atm%shallow_droplet_number, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_ice_number", atm%stratiform_ice_number, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_rain", atm%stratiform_rain, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_rain_size", atm%stratiform_rain_size, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_snow", atm%stratiform_snow, &
+                   unlim_dim_level=time_level)
+    call read_data(dataset, "stratiform_snow_size", atm%stratiform_snow_size, &
                    unlim_dim_level=time_level)
   endif
   if (cleansky) then
@@ -313,6 +338,11 @@ subroutine destroy_atmosphere(atm)
   if (allocated(atm%surface_temperature)) deallocate(atm%surface_temperature)
   if (allocated(atm%time)) deallocate(atm%time)
   if (allocated(atm%stratiform_droplet_number)) deallocate(atm%stratiform_droplet_number)
+  if (allocated(atm%stratiform_ice_number)) deallocate(atm%stratiform_ice_number)
+  if (allocated(atm%stratiform_rain)) deallocate(atm%stratiform_rain)
+  if (allocated(atm%stratiform_rain_size)) deallocate(atm%stratiform_rain_size)
+  if (allocated(atm%stratiform_snow)) deallocate(atm%stratiform_snow)
+  if (allocated(atm%stratiform_snow_size)) deallocate(atm%stratiform_snow_size)
   if (allocated(atm%shallow_droplet_number)) deallocate(atm%shallow_droplet_number)
   if (allocated(atm%land_fraction)) deallocate(atm%land_fraction)
   if (allocated(atm%aerosols)) deallocate(atm%aerosols)
