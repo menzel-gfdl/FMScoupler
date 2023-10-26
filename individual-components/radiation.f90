@@ -11,6 +11,7 @@ use flux_diagnostics, only: FluxDiagnostics
 use fms_mod, only: check_nml_error, error_mesg, fatal, fms_end, fms_init, input_nml_file, &
                    mpp_pe, mpp_root_pe, stdlog
 use get_cal_time_mod, only: get_cal_time
+use gfdl_fluxes, only: BroadbandFluxes
 use grid2_mod, only: grid_end, grid_init
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain, mpp_get_io_domain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
@@ -51,6 +52,7 @@ real, dimension(:), pointer :: direct_albedo_vis
 real, dimension(:,:), allocatable :: diffuse_surface_albedo
 real, dimension(:,:), allocatable :: direct_surface_albedo
 type(FluxDiagnostics), dimension(4) :: flux_diags
+real, dimension(:,:), allocatable :: flux_ratio
 integer :: i
 real, dimension(:,:), allocatable :: ice_size
 integer :: id_lat
@@ -72,6 +74,7 @@ real, dimension(:,:), allocatable :: liquid_size
 integer :: logfile_handle
 integer :: longwave_axis_id
 real, dimension(:,:), allocatable :: longwave_band_limits
+type(BroadbandFluxes), dimension(4) :: longwave_broadband_fluxes
 integer, dimension(:,:), allocatable :: longwave_gpoint_limits
 integer :: n
 integer :: num_bands
@@ -89,6 +92,7 @@ type(time_type) :: time
 type(time_type) :: time_next
 integer :: shortwave_axis_id
 real, dimension(:,:), allocatable :: shortwave_band_limits
+type(BroadbandFluxes), dimension(4) :: shortwave_broadband_fluxes
 integer, dimension(:,:), allocatable :: shortwave_gpoint_limits
 type(SolarSpectrum) :: solar_flux_spectrum
 type(SolarConstant) :: solar_flux_constant
@@ -249,6 +253,13 @@ else
   surface_albedo_weight = 1.
 endif
 
+do i = 1, size(longwave_broadband_fluxes)
+  call longwave_broadband_fluxes(i)%create(num_columns(1), num_levels, .false.)
+  call shortwave_broadband_fluxes(i)%create(num_columns(1), num_levels, i .eq. all_)
+enddo
+allocate(flux_ratio(num_lon, num_lat))
+flux_ratio(:, :) = 1.
+
 !Main loop.
 do t = 1, atm%num_times
   !Calculate the current time.
@@ -324,7 +335,7 @@ do t = 1, atm%num_times
       n = radiation_context%aerosol_optics%family(i)%indices(j)
       buffer(:, :, :) = buffer(:, :, :) + atm%aerosols(1:num_lon, 1:num_lat, :, n)
     enddo
-    call aerosol_species_diags(i)%save_data(buffer, 1, 1, 1, time)
+    call aerosol_species_diags(i)%save_data(buffer, layer_thickness, 1, 1, 1, time)
   enddo
   deallocate(buffer)
 
@@ -368,45 +379,65 @@ do t = 1, atm%num_times
   !Calculate the fluxes.
   !Clean-clear sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean_clear, 1)
+  call radiation_context%longwave_fluxes(1)%integrated(longwave_broadband_fluxes(clean_clear))
+  call longwave_broadband_fluxes(clean_clear)%heating_rates(level_pressure)
   call radiation_context%calculate_shortwave_fluxes(zenith, direct_surface_albedo, &
                                                     diffuse_surface_albedo, clean_clear, 1)
+  call radiation_context%shortwave_fluxes(1)%integrated(shortwave_broadband_fluxes(clean_clear))
+  call shortwave_broadband_fluxes(clean_clear)%heating_rates(level_pressure)
   call radiation_context%longwave_gas_optics%gpoint_limits(longwave_gpoint_limits)
   call radiation_context%shortwave_gas_optics%gpoint_limits(shortwave_gpoint_limits)
   call flux_diags(clean_clear)%save_data(longwave_gpoint_limits, &
-                                         radiation_context%longwave_fluxes(1), &
+                                         longwave_broadband_fluxes(clean_clear), &
                                          shortwave_gpoint_limits, &
-                                         radiation_context%shortwave_fluxes(1), &
-                                         num_lon, num_lat, 1, 1, 1, time, level_pressure)
+                                         shortwave_broadband_fluxes(clean_clear), &
+                                         level_pressure, num_lon, num_lat, 1, 1, 1, time, &
+                                         flux_ratio)
 
   !Clean sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean, 1)
+  call radiation_context%longwave_fluxes(1)%integrated(longwave_broadband_fluxes(clean))
+  call longwave_broadband_fluxes(clean)%heating_rates(level_pressure)
   call radiation_context%calculate_shortwave_fluxes(zenith, direct_surface_albedo, &
                                                     diffuse_surface_albedo, clean, 1)
+  call radiation_context%shortwave_fluxes(1)%integrated(shortwave_broadband_fluxes(clean))
+  call shortwave_broadband_fluxes(clean)%heating_rates(level_pressure)
   call flux_diags(clean)%save_data(longwave_gpoint_limits, &
-                                   radiation_context%longwave_fluxes(1), &
+                                   longwave_broadband_fluxes(clean), &
                                    shortwave_gpoint_limits, &
-                                   radiation_context%shortwave_fluxes(1), &
-                                   num_lon, num_lat, 1, 1, 1, time, level_pressure)
+                                   shortwave_broadband_fluxes(clean), &
+                                   level_pressure, num_lon, num_lat, 1, 1, 1, time, &
+                                   flux_ratio)
 
   !Clear sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clear, 1)
+  call radiation_context%longwave_fluxes(1)%integrated(longwave_broadband_fluxes(clear))
+  call longwave_broadband_fluxes(clear)%heating_rates(level_pressure)
   call radiation_context%calculate_shortwave_fluxes(zenith, direct_surface_albedo, &
                                                     diffuse_surface_albedo, clear, 1)
+  call radiation_context%shortwave_fluxes(1)%integrated(shortwave_broadband_fluxes(clear))
+  call shortwave_broadband_fluxes(clear)%heating_rates(level_pressure)
   call flux_diags(clear)%save_data(longwave_gpoint_limits, &
-                                   radiation_context%longwave_fluxes(1), &
+                                   longwave_broadband_fluxes(clear), &
                                    shortwave_gpoint_limits, &
-                                   radiation_context%shortwave_fluxes(1), &
-                                   num_lon, num_lat, 1, 1, 1, time, level_pressure)
+                                   shortwave_broadband_fluxes(clear), &
+                                   level_pressure, num_lon, num_lat, 1, 1, 1, time, &
+                                   flux_ratio)
 
   !All sky.$
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, all_, 1)
+  call radiation_context%longwave_fluxes(1)%integrated(longwave_broadband_fluxes(all_))
+  call longwave_broadband_fluxes(all_)%heating_rates(level_pressure)
   call radiation_context%calculate_shortwave_fluxes(zenith, direct_surface_albedo, &
                                                     diffuse_surface_albedo, all_, 1)
+  call radiation_context%shortwave_fluxes(1)%integrated(shortwave_broadband_fluxes(all_))
+  call shortwave_broadband_fluxes(all_)%heating_rates(level_pressure)
   call flux_diags(all_)%save_data(longwave_gpoint_limits, &
-                                  radiation_context%longwave_fluxes(1), &
+                                  longwave_broadband_fluxes(all_), &
                                   shortwave_gpoint_limits, &
-                                  radiation_context%shortwave_fluxes(1), &
-                                  num_lon, num_lat, 1, 1, 1, time, level_pressure)
+                                  shortwave_broadband_fluxes(all_), &
+                                  level_pressure, num_lon, num_lat, 1, 1, 1, time, &
+                                  flux_ratio)
   deallocate(diffuse_surface_albedo, direct_surface_albedo)
   deallocate(longwave_gpoint_limits, shortwave_gpoint_limits)
 
@@ -434,6 +465,12 @@ if (allocated(aerosol_species_diags)) then
   enddo
   deallocate(aerosol_species_diags)
 endif
+deallocate(flux_ratio)
+do i = 1, size(longwave_broadband_fluxes)
+  call longwave_broadband_fluxes(i)%destroy()
+  call shortwave_broadband_fluxes(i)%destroy()
+enddo
+deallocate(flux_ratio)
 call diag_manager_end(time)
 call radiation_context%destroy()
 call destroy_atmosphere(atm)
