@@ -465,7 +465,6 @@ if (allocated(aerosol_species_diags)) then
   enddo
   deallocate(aerosol_species_diags)
 endif
-deallocate(flux_ratio)
 do i = 1, size(longwave_broadband_fluxes)
   call longwave_broadband_fluxes(i)%destroy()
   call shortwave_broadband_fluxes(i)%destroy()
