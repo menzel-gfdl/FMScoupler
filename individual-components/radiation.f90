@@ -8,12 +8,13 @@ use diag_manager_mod, only: diag_axis_init, diag_manager_end, diag_manager_init,
                             diag_manager_set_time_end, diag_send_complete
 use field_manager_mod, only: model_atmos
 use flux_diagnostics, only: FluxDiagnostics
-use fms_mod, only: check_nml_error, error_mesg, fatal, fms_end, fms_init, input_nml_file, &
-                   mpp_pe, mpp_root_pe, stdlog
+use fms_mod, only: check_nml_error, clock_loop, error_mesg, fatal, fms_end, fms_init, input_nml_file, &
+                   mpp_clock_begin, mpp_clock_end, mpp_clock_id, mpp_pe, mpp_root_pe, stdlog
 use get_cal_time_mod, only: get_cal_time
 use gfdl_fluxes, only: BroadbandFluxes
 use grid2_mod, only: grid_end, grid_init
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain, mpp_get_io_domain
+use mpp_mod, only: mpp_clock_set_grain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 use radiation_context, only: all_, clean, clean_clear, clear, RadiationContext
 use solar_constant, only: SolarConstant
@@ -23,7 +24,7 @@ use time_manager_mod, only: get_date, julian, print_time, set_calendar_type, tim
                             time_type
 use tracer_manager_mod, only: get_number_tracers, get_tracer_index, &
                               tracer_manager_end, tracer_manager_init
-use utilities, only: integrate
+use utilities, only: catch_error, integrate
 implicit none
 
 type(AerosolDiagnostics), dimension(:), allocatable :: aerosol_species_diags
@@ -34,6 +35,7 @@ real, dimension(:), allocatable :: average_high_cloud
 real, dimension(:), allocatable :: average_low_cloud
 real, dimension(:), allocatable :: average_mid_cloud
 integer, dimension(4) :: axes
+integer :: band
 real, dimension(:,:,:), allocatable :: buffer
 type(CloudDiagnostics) :: cloud_diags
 integer :: column
@@ -44,6 +46,7 @@ real, dimension(:,:), pointer :: convective_liquid_content
 real, dimension(:), allocatable :: cloud_top_pressure
 real, dimension(:), allocatable :: cloud_top_temperature
 integer, dimension(6) :: date
+real, dimension(:), pointer :: daylight_fraction
 real :: dt
 real, dimension(:), pointer :: diffuse_albedo_nir
 real, dimension(:), pointer :: direct_albedo_nir
@@ -86,6 +89,7 @@ integer :: num_lon
 real, dimension(:,:), pointer :: ozone
 type(RadiationContext) :: radiation_context
 real, dimension(:,:), allocatable :: rain_size
+integer :: s
 real, dimension(:,:), allocatable :: snow_size
 real, dimension(:,:), allocatable :: surface_emissivity !(lon, lat).
 type(time_type) :: time
@@ -113,6 +117,13 @@ real, dimension(:), allocatable :: total_solar_flux
 real, dimension(:,:), pointer :: water_vapor
 real, dimension(:), pointer :: zenith
 
+!MPP timers.
+integer :: aerosol_optics_clock
+integer :: cloud_optics_clock
+integer :: flux_solver_clock
+integer :: gas_optics_clock
+integer :: radiation_driver_clock
+
 !Physics driver parameters.
 real, parameter :: max_diam_drop = 50.e-6
 real, parameter :: min_diam_ice = 10.e-6
@@ -132,10 +143,18 @@ namelist /standalone_radiation_nml/ near_infrared_cutoff, &
 
 !Start up mpi.
 call fms_init()
+call mpp_clock_set_grain(clock_loop)
 call time_manager_init()
 call tracer_manager_init()
 call grid_init()
 call time_interp_external_init()
+
+!Set up timers.
+radiation_driver_clock = mpp_clock_id("  Radiation: radiation driver")
+aerosol_optics_clock = mpp_clock_id("    Radiation: aerosol optical properties")
+cloud_optics_clock = mpp_clock_id("    Radiation: cloud optical properties")
+flux_solver_clock = mpp_clock_id("    Radiation: flux solver")
+gas_optics_clock = mpp_clock_id("    Radiation: gas optical properties")
 
 !Read the namelist.
 read(input_nml_file, nml=standalone_radiation_nml, iostat=ios)
@@ -277,6 +296,7 @@ do t = 1, atm%num_times
   !Time interpolation.
   call radiation_context%update(time)
 
+  call mpp_clock_begin(radiation_driver_clock)
   !Update gas concentrations.
   water_vapor(1:num_columns(1), 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, h2o)
   ozone(1:num_columns(1), 1:num_layers) => atm%ppmv(1:num_lon, 1:num_lat, 1:num_layers, o3)
@@ -289,9 +309,11 @@ do t = 1, atm%num_times
   level_temperature(1:num_columns(1), 1:num_levels) => atm%level_temperature(1:num_lon, 1:num_lat, 1:num_levels)
   surface_temperature(1:num_columns(1)) => atm%surface_temperature(1:num_lon, 1:num_lat)
   zenith(1:num_columns(1)) => atm%solar_zenith_angle(1:num_lon, 1:num_lat)
+  call mpp_clock_begin(gas_optics_clock)
   call radiation_context%calculate_gas_optics(layer_pressure, level_pressure, &
                                               layer_temperature, level_temperature, &
                                               surface_temperature, 1, zenith)
+  call mpp_clock_end(gas_optics_clock)
 
   !Calculate cloud optics.
   land_fraction(1:num_columns(1)) => atm%land_fraction(1:num_lon, 1:num_lat)
@@ -309,6 +331,8 @@ do t = 1, atm%num_times
   stratiform_snow(1:num_columns(1), 1:num_layers) => atm%stratiform_snow(1:num_lon, 1:num_lat, 1:num_layers)
   stratiform_snow_size(1:num_columns(1), 1:num_layers) => atm%stratiform_snow_size(1:num_lon, 1:num_lat, 1:num_layers)
   layer_thickness(1:num_columns(1), 1:num_layers) => atm%layer_thickness(1:num_lon, 1:num_lat, 1:num_layers)
+  daylight_fraction(1:num_columns(1)) => atm%daylight_fraction(1:num_lon, 1:num_lat)
+  call mpp_clock_begin(cloud_optics_clock)
   call radiation_context%calculate_cloud_optics(layer_pressure, level_pressure, layer_temperature, &
                                                 level_temperature, land_fraction, &
                                                 layer_thickness, convective_droplet_number, &
@@ -319,15 +343,18 @@ do t = 1, atm%num_times
                                                 stratiform_snow, stratiform_snow_size, 1, &
                                                 average_high_cloud, average_mid_cloud, average_low_cloud, &
                                                 average_cloud, cloud_top_pressure, cloud_top_temperature, &
-                                                liquid_size, ice_size, rain_size, snow_size)
+                                                liquid_size, ice_size, rain_size, snow_size, daylight_fraction)
+  call mpp_clock_end(cloud_optics_clock)
   call cloud_diags%save_data(average_high_cloud, average_mid_cloud, average_low_cloud, average_cloud, &
                              cloud_top_pressure, cloud_top_temperature, liquid_size, ice_size, &
                              rain_size, snow_size, num_lon, num_lat, 1, 1, time)
 
   !Calculate aerosol optics.
+  call mpp_clock_begin(aerosol_optics_clock)
   call radiation_context%calculate_aerosol_optics(atm%aerosols, aerosol_relative_humidity, &
                                                   atm%level_pressure, layer_thickness, time, &
-                                                  1, num_lon, 1, num_lat, 1)
+                                                  1, num_lon, 1, num_lat, 1, atm%daylight_fraction)
+  call mpp_clock_end(aerosol_optics_clock)
   allocate(buffer(num_lon, num_lat, num_layers))
   do i = 1, size(radiation_context%aerosol_optics%family)
     buffer = 0.
@@ -338,6 +365,51 @@ do t = 1, atm%num_times
     call aerosol_species_diags(i)%save_data(buffer, layer_thickness, 1, 1, 1, time)
   enddo
   deallocate(buffer)
+
+  !Calculate the total aerosol optics.
+  s = size(radiation_context%aerosol_optics%longwave_species) + 2
+  radiation_context%longwave_aerosol_optical_properties(s, 1)%g = 0.
+  radiation_context%longwave_aerosol_optical_properties(s, 1)%ssa = 0.
+  radiation_context%longwave_aerosol_optical_properties(s, 1)%tau = 0.
+  radiation_context%shortwave_aerosol_optical_properties(s, 1)%g = 0.
+  radiation_context%shortwave_aerosol_optical_properties(s, 1)%ssa = 0.
+  radiation_context%shortwave_aerosol_optical_properties(s, 1)%tau = 0.
+  do i = 1, size(radiation_context%aerosol_optics%longwave_species) + 1
+    call catch_error(radiation_context%longwave_aerosol_optical_properties(i, 1)%increment( &
+      radiation_context%longwave_aerosol_optical_properties(s, 1)))
+    call catch_error(radiation_context%shortwave_aerosol_optical_properties(i, 1)%increment( &
+      radiation_context%shortwave_aerosol_optical_properties(s, 1)))
+  enddo
+  call radiation_context%longwave_gas_optics%gpoint_limits(longwave_gpoint_limits)
+  do band = 1, size(longwave_gpoint_limits, 2) !Loop over bands.
+    do k = longwave_gpoint_limits(1, band), longwave_gpoint_limits(2, band) !Loop over g-points in the band.
+      do j = 1, num_layers
+        do i = 1, num_columns(1)
+          radiation_context%longwave_total_aerosol_optical_properties(1)%tau(i, j, k) = &
+            radiation_context%longwave_aerosol_optical_properties(s, 1)%tau(i, j, band)
+          radiation_context%longwave_total_aerosol_optical_properties(1)%ssa(i, j, k) = &
+            radiation_context%longwave_aerosol_optical_properties(s, 1)%ssa(i, j, band)
+          radiation_context%longwave_total_aerosol_optical_properties(1)%g(i, j, k) = &
+            radiation_context%longwave_aerosol_optical_properties(s, 1)%g(i, j, band)
+        enddo
+      enddo
+    enddo
+  enddo
+  call radiation_context%shortwave_gas_optics%gpoint_limits(shortwave_gpoint_limits)
+  do band = 1, size(shortwave_gpoint_limits, 2) !Loop over bands.
+    do k = shortwave_gpoint_limits(1, band), shortwave_gpoint_limits(2, band) !Loop over g-points in the band.
+      do j = 1, num_layers
+        do i = 1, num_columns(1)
+          radiation_context%shortwave_total_aerosol_optical_properties(1)%tau(i, j, k) = &
+            radiation_context%shortwave_aerosol_optical_properties(s, 1)%tau(i, j, band)
+          radiation_context%shortwave_total_aerosol_optical_properties(1)%ssa(i, j, k) = &
+            radiation_context%shortwave_aerosol_optical_properties(s, 1)%ssa(i, j, band)
+          radiation_context%shortwave_total_aerosol_optical_properties(1)%g(i, j, k) = &
+            radiation_context%shortwave_aerosol_optical_properties(s, 1)%g(i, j, band)
+        enddo
+      enddo
+    enddo
+  enddo
 
   !Calculate the surface albedo.
   diffuse_albedo_nir(1:num_columns(1)) => atm%surface_albedo_diffuse_ir(1:num_lon, 1:num_lat)
@@ -377,6 +449,7 @@ do t = 1, atm%num_times
   deallocate(total_solar_flux)
 
   !Calculate the fluxes.
+  call mpp_clock_begin(flux_solver_clock)
   !Clean-clear sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean_clear, 1)
   call radiation_context%longwave_fluxes(1)%integrated(longwave_broadband_fluxes(clean_clear))
@@ -385,8 +458,6 @@ do t = 1, atm%num_times
                                                     diffuse_surface_albedo, clean_clear, 1)
   call radiation_context%shortwave_fluxes(1)%integrated(shortwave_broadband_fluxes(clean_clear))
   call shortwave_broadband_fluxes(clean_clear)%heating_rates(level_pressure)
-  call radiation_context%longwave_gas_optics%gpoint_limits(longwave_gpoint_limits)
-  call radiation_context%shortwave_gas_optics%gpoint_limits(shortwave_gpoint_limits)
   call flux_diags(clean_clear)%save_data(longwave_gpoint_limits, &
                                          longwave_broadband_fluxes(clean_clear), &
                                          shortwave_gpoint_limits, &
@@ -438,8 +509,10 @@ do t = 1, atm%num_times
                                   shortwave_broadband_fluxes(all_), &
                                   level_pressure, num_lon, num_lat, 1, 1, 1, time, &
                                   flux_ratio)
+  call mpp_clock_end(flux_solver_clock)
   deallocate(diffuse_surface_albedo, direct_surface_albedo)
   deallocate(longwave_gpoint_limits, shortwave_gpoint_limits)
+  call mpp_clock_end(radiation_driver_clock)
 
   !Write out diagnostics.
   call diag_manager_set_time_end(time)
