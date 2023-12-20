@@ -6,6 +6,86 @@ and this project uses `yyyy.rr[.pp]`, where `yyyy` is the year a patch is releas
 `rr` is a sequential release number (starting from `01`), and an optional two-digit
 sequential patch number (starting from `01`).
 
+## [2023.04] - 2023-12-04
+### Added
+- Adds additional output arguments `thv_atm` amd `thv_surf` to the `surface_flux` interface, as well as calls to xgrid and send data in order to use a new atmosphere boundary layer scheme.
+
+### Changed
+- Routines using the `data` argument name explicictly have been updated to match corresponding FMS updates
+
+### Tag Commit Hashes
+2023.04-beta1 93ce3642a7951eb11d7d39441911717923dfc768
+
+
+## [2023.02] - 2023-07-27
+### Fixed
+- SHARED: Fixes crashes due to uninitialized namelist variables.
+
+### Changed
+- Routines/variables from FMS have been updated to include a prefixes containing fms and the subdirectory/module name. This was necessitated by aliases being added to the 'global' libFMS.F90 module in FMS.
+- FULL: Adds logic for PE assignment in order to allow for a data atmosphere to be used alongside the combined ice-ocean driver.
+
+### Removed
+- Usage of fms_io and mpp_io has been deprecated. If using these modules in a model, you must compile both FMS and FMScoupler with the -Duse_deprecated_io CPP flag.
+
+### Tag Commit Hashes
+2023.02-alpha1 9da2d61f74671ccee775553a36439260c9241383
+2023.02-alpha2 9da2d61f74671ccee775553a36439260c9241383
+2023.02-alpha3 4ca21a7f3dc3649f934ad7b34e1a61b63e589712
+2023.02-beta1  78c438457cd49a82f6eaec2d57638ffc5084c688
+
+
+## [2023.01] - 2023-04-03
+### Fixed
+- Fixed IO domain related failures coming from ice model for the null model test
+### Added
+- Added clock optimizations to the SHiELD coupler
+
+### Tag Commit Hashes
+2023.01-alpha1 7c47be33b4049a96bbce3d9b4cc165dbb147e751
+2023.01-alpha2 7c47be33b4049a96bbce3d9b4cc165dbb147e751
+2023.01-alpha3 7c47be33b4049a96bbce3d9b4cc165dbb147e751
+2023.01-alpha4 7c47be33b4049a96bbce3d9b4cc165dbb147e751
+2023.01-beta1  2571fc016866898255559355b92347cd354082ce
+2023.01-beta2  2571fc016866898255559355b92347cd354082ce
+2023.01-beta3  2571fc016866898255559355b92347cd354082ce
+2023.01-beta4  2571fc016866898255559355b92347cd354082ce
+2023.01-beta5  2571fc016866898255559355b92347cd354082ce
+
+## [2022.03] - 2022-08-01
+### Added
+- Added doxygen comments for the simple and shield couplers, and general layout improvements for the generated site. It is now updated upon releases and hosted at noaa-gfdl.github.io/FMScoupler
+
+### Tag Commit Hashes
+2022.03-alpha1 c12af876d4baef20346db8391422b6b6df209c75
+2022.03-beta1  6d4d2b3dce8152400c8c15551763835689de8ddb
+
+## [2022.02] - 2022-04-29
+### Removed
+- Removes grid code and variables from SHiELD/coupler_main and fixes data_override_init
+- Removes outdated logic in simple coupler for data_override_init parsing
+### Changed
+- Changes routine names used for constants in order to compile with recent constants changes to FMS
+### Fixed
+- FULL: Replaced a deprecated OpenMP routine causing warnings  
+- SIMPLE: Fixed a missing variable allocation that was causing failures with certain compilers
+
+### Tag Commit Hashes
+2022.02-alpha1 de3e3cbca349021a545a500f5ba1af6af22acfae
+2022.02-alpha2 c23b6f3ff1f902adf1fa43f8a5c9d2307bd01106
+2022.02-beta1  2bb8f35e2f579e738b58c610c35ca9afd7e36358 
+
+## [2022.01] - 2022-03-25
+### Added
+- Added SHiELD main driver program to the repository
+- Added some additional information on the coupler to the readme
+
+### Tag Commit Hashes
+- 2022.01-alpha1 4707b255c842dd08b3cd65a45b7924e7a9d88720
+- 2022.01-beta1  4707b255c842dd08b3cd65a45b7924e7a9d88720
+- 2022.01-alpha2 7790c5d8e243eb97f3fa87f15546dadc6d963ed1
+- 2022.01-beta2  c9f405a2383451550b9a8aaa8279a2a973d65c90
+
 ## [2021.03] - 2021-08-16
 ### Fixed
 - In the full coupler, corrects a `get_variable_size` call to prevent crashes when running with the SCM
