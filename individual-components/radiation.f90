@@ -349,6 +349,10 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   num_columns = num_lon*num_lat
   num_levels = num_layers + 1
 
+  !Get gpoint limits
+  call radiation_context%longwave_gas_optics%gpoint_limits(longwave_gpoint_limits)
+  call radiation_context%shortwave_gas_optics%gpoint_limits(shortwave_gpoint_limits)
+
   !Allocate thread-specific arrays.
   allocate(aerosol_relative_humidity(num_lon, num_lat, num_layers))
   allocate(average_cloud(num_columns))
@@ -471,36 +475,6 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
       radiation_context%longwave_aerosol_optical_properties(s, block_)))
     call catch_error(radiation_context%shortwave_aerosol_optical_properties(i, block_)%increment( &
       radiation_context%shortwave_aerosol_optical_properties(s, block_)))
-  enddo
-  call radiation_context%longwave_gas_optics%gpoint_limits(longwave_gpoint_limits)
-  do band = 1, size(longwave_gpoint_limits, 2) !Loop over bands.
-    do k = longwave_gpoint_limits(1, band), longwave_gpoint_limits(2, band) !Loop over g-points in the band.
-      do j = 1, num_layers
-        do i = 1, num_columns
-          radiation_context%longwave_total_aerosol_optical_properties(block_)%tau(i, j, k) = &
-            radiation_context%longwave_aerosol_optical_properties(s, block_)%tau(i, j, band)
-          radiation_context%longwave_total_aerosol_optical_properties(block_)%ssa(i, j, k) = &
-            radiation_context%longwave_aerosol_optical_properties(s, block_)%ssa(i, j, band)
-          radiation_context%longwave_total_aerosol_optical_properties(block_)%g(i, j, k) = &
-            radiation_context%longwave_aerosol_optical_properties(s, block_)%g(i, j, band)
-        enddo
-      enddo
-    enddo
-  enddo
-  call radiation_context%shortwave_gas_optics%gpoint_limits(shortwave_gpoint_limits)
-  do band = 1, size(shortwave_gpoint_limits, 2) !Loop over bands.
-    do k = shortwave_gpoint_limits(1, band), shortwave_gpoint_limits(2, band) !Loop over g-points in the band.
-      do j = 1, num_layers
-        do i = 1, num_columns
-          radiation_context%shortwave_total_aerosol_optical_properties(block_)%tau(i, j, k) = &
-            radiation_context%shortwave_aerosol_optical_properties(s, block_)%tau(i, j, band)
-          radiation_context%shortwave_total_aerosol_optical_properties(block_)%ssa(i, j, k) = &
-            radiation_context%shortwave_aerosol_optical_properties(s, block_)%ssa(i, j, band)
-          radiation_context%shortwave_total_aerosol_optical_properties(block_)%g(i, j, k) = &
-            radiation_context%shortwave_aerosol_optical_properties(s, block_)%g(i, j, band)
-        enddo
-      enddo
-    enddo
   enddo
 
   !Calculate the surface albedo.
