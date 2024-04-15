@@ -18,6 +18,10 @@ use mpp_domains_mod, only: domain2d, mpp_get_compute_domain
 use mpp_mod, only: mpp_clock_set_grain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
 use radiation_context, only: all_, clean, clean_clear, clear, RadiationContext
+use random_numbers_mod, only: randomnumberstream
+use random_number_streams_mod, only: random_number_streams_init, &
+                                     random_number_streams_end, &
+                                     get_random_number_streams
 use solar_constant, only: SolarConstant
 use solar_spectrum, only: SolarSpectrum
 use time_interp_external2_mod, only: time_interp_external_init
@@ -106,6 +110,7 @@ call time_manager_init()
 call tracer_manager_init()
 call grid_init()
 call time_interp_external_init()
+call random_number_streams_init()
 
 !Set up timers.
 radiation_driver_clock = mpp_clock_id("  Radiation: radiation driver")
@@ -250,6 +255,7 @@ if (allocated(aerosol_species_diags)) then
   enddo
   deallocate(aerosol_species_diags)
 endif
+call random_number_streams_end()
 call diag_manager_end(time)
 call radiation_context%destroy()
 do i = 1, num_blocks
@@ -305,7 +311,9 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   real, dimension(:, :), pointer :: convective_droplet_number
   real, dimension(:, :), pointer :: convective_fraction
   real, dimension(:, :), pointer :: convective_ice_content
+  real, dimension(:, :), allocatable :: convective_ice_size
   real, dimension(:, :), pointer :: convective_liquid_content
+  real, dimension(:, :), allocatable :: convective_liquid_size
   real, dimension(:), pointer :: daylight_fraction
   real, dimension(:), pointer :: diffuse_albedo_nir
   real, dimension(:), pointer :: direct_albedo_nir
@@ -321,7 +329,6 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   real, dimension(:, :), pointer :: layer_thickness
   real, dimension(:, :), pointer :: level_pressure
   real, dimension(:, :), pointer :: level_temperature
-  real, dimension(:, :), allocatable :: liquid_size
   type(BroadbandFluxes), dimension(4) :: longwave_broadband_fluxes
   integer, dimension(:, :), allocatable :: longwave_gpoint_limits
   real, dimension(:, :), pointer :: ozone
@@ -332,12 +339,16 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   real, dimension(:, :), pointer :: stratiform_droplet_number
   real, dimension(:, :), pointer :: stratiform_fraction
   real, dimension(:, :), pointer :: stratiform_ice_content
-  real, dimension(:, :), pointer :: stratiform_liquid_content
   real, dimension(:, :), pointer :: stratiform_ice_number
+  real, dimension(:, :), allocatable :: stratiform_ice_size
+  real, dimension(:, :), pointer :: stratiform_liquid_content
+  real, dimension(:, :), allocatable :: stratiform_liquid_size
   real, dimension(:, :), pointer :: stratiform_rain
   real, dimension(:, :), pointer :: stratiform_rain_size
   real, dimension(:, :), pointer :: stratiform_snow
   real, dimension(:, :), pointer :: stratiform_snow_size
+  type(randomnumberstream), dimension(:, :), allocatable, target :: streams !(lon, lat).
+  type(randomnumberstream), dimension(:), pointer :: streams_pointer !(column).
   real, dimension(:, :), allocatable :: surface_emissivity
   real, dimension(:), pointer :: surface_temperature
   real, dimension(:), allocatable :: total_solar_flux
@@ -361,10 +372,17 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   allocate(average_mid_cloud(num_columns))
   allocate(cloud_top_pressure(num_columns))
   allocate(cloud_top_temperature(num_columns))
-  allocate(ice_size(num_columns, num_layers))
-  allocate(liquid_size(num_columns, num_layers))
+  allocate(convective_ice_size(num_columns, num_layers))
+  allocate(convective_liquid_size(num_columns, num_layers))
   allocate(rain_size(num_columns, num_layers))
   allocate(snow_size(num_columns, num_layers))
+  allocate(stratiform_ice_size(num_columns, num_layers))
+  allocate(stratiform_liquid_size(num_columns, num_layers))
+
+  !Get the random numbers streams.
+  allocate(streams(num_lon, num_lat))
+  call get_random_number_streams(atm%layer_temperature(:, :, 1), streams, 2)
+  streams_pointer(1:num_columns) => streams(1:num_lon, 1:num_lat)
 
   !Copy aerosol relative_humidity for now.
   aerosol_relative_humidity(:, :, :) = atm%ppmv(:, :, :, h2o)
@@ -430,10 +448,14 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                                 stratiform_snow, stratiform_snow_size, block_, &
                                                 average_high_cloud, average_mid_cloud, average_low_cloud, &
                                                 average_cloud, cloud_top_pressure, cloud_top_temperature, &
-                                                liquid_size, ice_size, rain_size, snow_size, daylight_fraction)
+                                                convective_liquid_size, convective_ice_size, &
+                                                stratiform_liquid_size, stratiform_ice_size, &
+                                                rain_size, snow_size, streams_pointer)
+  streams_pointer => null()
+  deallocate(streams)
   call mpp_clock_end(cloud_optics_clock)
   call cloud_diags%save_data(average_high_cloud, average_mid_cloud, average_low_cloud, average_cloud, &
-                             cloud_top_pressure, cloud_top_temperature, liquid_size, ice_size, &
+                             cloud_top_pressure, cloud_top_temperature, stratiform_liquid_size, stratiform_ice_size, &
                              rain_size, snow_size, num_lon, num_lat, &
                              column_blocking%ibs(block_) - column_blocking%isc + 1, &
                              column_blocking%jbs(block_) - column_blocking%jsc + 1, time)
@@ -592,10 +614,12 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   deallocate(average_mid_cloud)
   deallocate(cloud_top_pressure)
   deallocate(cloud_top_temperature)
-  deallocate(ice_size)
-  deallocate(liquid_size)
+  deallocate(convective_ice_size)
+  deallocate(convective_liquid_size)
   deallocate(rain_size)
   deallocate(snow_size)
+  deallocate(stratiform_ice_size)
+  deallocate(stratiform_liquid_size)
   deallocate(aerosol_relative_humidity)
   deallocate(flux_ratio)
   do i = 1, size(longwave_broadband_fluxes)
