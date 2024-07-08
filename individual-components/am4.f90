@@ -67,13 +67,75 @@ public :: read_time_slice
 public :: destroy_atmosphere
 integer, parameter, public :: h2o = 1
 integer, parameter, public :: o3 = 2
+character(len=64), dimension(46) :: valid_names = [ &
+  "solar_constant             ", &
+  "earth_sun_distance_fraction", &
+  "surface_temperature        ", &
+  "land_fraction              ", &
+  "cosine_zenith              ", &
+  "daylight_fraction          ", &
+  "visible_direct_albedo      ", &
+  "visible_diffuse_albedo     ", &
+  "infrared_direct_albedo     ", &
+  "infrared_diffuse_albedo    ", &
+  "layer_pressure             ", &
+  "layer_temperature          ", &
+  "water_vapor                ", &
+  "ozone                      ", &
+  "level_pressure             ", &
+  "level_temperature          ", &
+  "layer_thickness            ", &
+  "stratiform_cloud_fraction  ", &
+  "shallow_cloud_fraction     ", &
+  "stratiform_ice_content     ", &
+  "shallow_ice_content        ", &
+  "stratiform_liquid_content  ", &
+  "shallow_liquid_content     ", &
+  "stratiform_droplet_number  ", &
+  "shallow_droplet_number     ", &
+  "stratiform_ice_number      ", &
+  "stratiform_rain            ", &
+  "stratiform_rain_size       ", &
+  "stratiform_snow            ", &
+  "stratiform_snow_size       ", &
+  "soa_concentration          ", &
+  "dust1_concentration        ", &
+  "dust2_concentration        ", &
+  "dust3_concentration        ", &
+  "dust4_concentration        ", &
+  "dust5_concentration        ", &
+  "sulfate_concentration      ", &
+  "ssalt1_concentration       ", &
+  "ssalt2_concentration       ", &
+  "ssalt3_concentration       ", &
+  "ssalt4_concentration       ", &
+  "ssalt5_concentration       ", &
+  "bcphobic_concentration     ", &
+  "bcphilic_concentration     ", &
+  "omphobic_concentration     ", &
+  "omphilic_concentration     " &
+]
+
 
 character(len=256) :: atmos_path = "none"
 logical :: cleansky = .false.
 logical :: clearsky = .false.
 integer, dimension(2) :: io_layout = (/1, 1/)
 integer, dimension(2) :: layout = (/0, 0/)
-namelist /am4_nml/ atmos_path, cleansky, clearsky, io_layout, layout
+character(len=256) :: override_path = "none"
+character(len=64) :: override_variable = "none"
+integer :: override_z_lower = -1
+integer :: override_z_upper = -1
+namelist /am4_nml/ atmos_path, cleansky, clearsky, io_layout, layout, &
+                   override_path, override_variable, override_z_lower, &
+                   override_z_upper
+
+
+interface override_data
+  module procedure override_data_1d
+  module procedure override_data_2d
+  module procedure override_data_3d
+end interface override_data
 
 
 contains
@@ -97,6 +159,19 @@ subroutine create_atmosphere(atm, column_blocking, nxblocks, nyblocks)
 
   read(input_nml_file, am4_nml, iostat=ierr)
   err = check_nml_error(ierr, "am4_nml")
+
+  !Sanity checks.
+  if (trim(override_path) .ne. "none") then
+    do i = 1, size(valid_names)
+      if (trim(override_variable) .eq. trim(valid_names(i))) then
+        exit
+      endif
+    enddo
+    if (i .gt. size(valid_names)) then
+      call error_mesg("create_atmosphere", &
+                      "cannot find override variable "//trim(override_variable)//".", fatal)
+    endif
+  endif
 
   !Open the *.tile1.nc file and get the longitude and latitude sizes.
   i = len_trim(atmos_path)
@@ -234,81 +309,97 @@ subroutine read_time_slice(atm, time_level, column_blocking)
 
   !Read in the data and block it.
   call read_data(dataset, "solar_constant", buffer_scalar(:, 1), unlim_dim_level=time_level)
+  call override_data("solar_constant", buffer_scalar(:, 1), time_level, atm(1)%domain)
   do i = 1, num_blocks
     atm(i)%total_solar_irradiance = buffer_scalar(1, 1)
   enddo
 
   call read_data(dataset, "earth_sun_distance_fraction", buffer_scalar(:, 1), unlim_dim_level=time_level)
+  call override_data("earth_sun_distance_fraction", buffer_scalar(:, 1), time_level, atm(1)%domain)
   do i = 1, num_blocks
     atm(i)%earth_sun_distance_fraction = buffer_scalar(1, 1)
   enddo
 
   call read_data(dataset, "surface_temperature", buffer2d, unlim_dim_level=time_level)
+  call override_data("surface_temperature", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%surface_temperature, column_blocking, i)
   enddo
 
   call read_data(dataset, "land_fraction", buffer2d, unlim_dim_level=time_level)
+  call override_data("land_fraction", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%land_fraction, column_blocking, i)
   enddo
 
   call read_data(dataset, "cosine_zenith", buffer2d, unlim_dim_level=time_level)
+  call override_data("cosine_zenith", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%solar_zenith_angle, column_blocking, i)
   enddo
 
   call read_data(dataset, "daylight_fraction", buffer2d, unlim_dim_level=time_level)
+  call override_data("daylight_fraction", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%daylight_fraction, column_blocking, i)
   enddo
 
   call read_data(dataset, "visible_direct_albedo", buffer2d, unlim_dim_level=time_level)
+  call override_data("visible_direct_albedo", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%surface_albedo_direct_uv, column_blocking, i)
   enddo
 
   call read_data(dataset, "visible_diffuse_albedo", buffer2d, unlim_dim_level=time_level)
+  call override_data("visible_diffuse_albedo", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%surface_albedo_diffuse_uv, column_blocking, i)
   enddo
 
   call read_data(dataset, "infrared_direct_albedo", buffer2d, unlim_dim_level=time_level)
+  call override_data("infrared_direct_albedo", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%surface_albedo_direct_ir, column_blocking, i)
   enddo
 
   call read_data(dataset, "infrared_diffuse_albedo", buffer2d, unlim_dim_level=time_level)
+  call override_data("infrared_diffuse_albedo", buffer2d, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_2d(buffer2d, atm(i)%surface_albedo_diffuse_ir, column_blocking, i)
   enddo
 
   call read_data(dataset, "layer_pressure", buffer3d_lay, unlim_dim_level=time_level)
+  call override_data("layer_pressure", buffer3d_lay, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lay, atm(i)%layer_pressure, column_blocking, i)
   enddo
 
   call read_data(dataset, "layer_temperature", buffer3d_lay, unlim_dim_level=time_level)
+  call override_data("layer_temperature", buffer3d_lay, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lay, atm(i)%layer_temperature, column_blocking, i)
   enddo
 
   call read_data(dataset, "water_vapor", buffer3d_lay, unlim_dim_level=time_level)
+  call override_data("water_vapor", buffer3d_lay, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lay, atm(i)%ppmv(:, :, :, h2o), column_blocking, i)
   enddo
 
   call read_data(dataset, "ozone", buffer3d_lay, unlim_dim_level=time_level)
+  call override_data("ozone", buffer3d_lay, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lay, atm(i)%ppmv(:, :, :, o3), column_blocking, i)
   enddo
 
   call read_data(dataset, "level_pressure", buffer3d_lev, unlim_dim_level=time_level)
+  call override_data("level_pressure", buffer3d_lev, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lev, atm(i)%level_pressure, column_blocking, i)
   enddo
 
   call read_data(dataset, "level_temperature", buffer3d_lev, unlim_dim_level=time_level)
+  call override_data("level_temperature", buffer3d_lev, time_level, atm(1)%domain)
   do i = 1, num_blocks
     call block_data_3d(buffer3d_lev, atm(i)%level_temperature, column_blocking, i)
   enddo
@@ -332,71 +423,85 @@ subroutine read_time_slice(atm, time_level, column_blocking)
     enddo
   else
     call read_data(dataset, "layer_thickness", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("layer_thickness", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%layer_thickness, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_cloud_fraction", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_cloud_fraction", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_cloud_fraction, column_blocking, i)
     enddo
 
     call read_data(dataset, "shallow_cloud_fraction", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("shallow_cloud_fraction", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%shallow_cloud_fraction, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_ice_content", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_ice_content", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_cloud_ice_content, column_blocking, i)
     enddo
 
     call read_data(dataset, "shallow_ice_content", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("shallow_ice_content", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%shallow_cloud_ice_content, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_liquid_content", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_liquid_content", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_cloud_liquid_content, column_blocking, i)
     enddo
 
     call read_data(dataset, "shallow_liquid_content", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("shallow_liquid_content", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%shallow_cloud_liquid_content, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_droplet_number", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_droplet_number", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_droplet_number, column_blocking, i)
     enddo
 
     call read_data(dataset, "shallow_droplet_number", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("shallow_droplet_number", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%shallow_droplet_number, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_ice_number", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_ice_number", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_ice_number, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_rain", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_rain", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_rain, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_rain_size", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_rain_size", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_rain_size, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_snow", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_snow", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_snow, column_blocking, i)
     enddo
 
     call read_data(dataset, "stratiform_snow_size", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("stratiform_snow_size", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%stratiform_snow_size, column_blocking, i)
     enddo
@@ -408,81 +513,97 @@ subroutine read_time_slice(atm, time_level, column_blocking)
     enddo
   else
     call read_data(dataset, "soa_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("soa_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 1), column_blocking, i)
     enddo
 
     call read_data(dataset, "dust1_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("dust1_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 2), column_blocking, i)
     enddo
 
     call read_data(dataset, "dust2_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("dust2_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 3), column_blocking, i)
     enddo
 
     call read_data(dataset, "dust3_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("dust3_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 4), column_blocking, i)
     enddo
 
     call read_data(dataset, "dust4_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("dust4_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 5), column_blocking, i)
     enddo
 
     call read_data(dataset, "dust5_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("dust5_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 6), column_blocking, i)
     enddo
 
     call read_data(dataset, "sulfate_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("sulfate_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 7), column_blocking, i)
     enddo
 
     call read_data(dataset, "ssalt1_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("ssalt1_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 8), column_blocking, i)
     enddo
 
     call read_data(dataset, "ssalt2_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("ssalt2_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 9), column_blocking, i)
     enddo
 
     call read_data(dataset, "ssalt3_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("ssalt3_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 10), column_blocking, i)
     enddo
 
     call read_data(dataset, "ssalt4_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("ssalt4_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 11), column_blocking, i)
     enddo
 
     call read_data(dataset, "ssalt5_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("ssalt5_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 12), column_blocking, i)
     enddo
 
     call read_data(dataset, "bcphobic_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("bcphobic_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 13), column_blocking, i)
     enddo
 
     call read_data(dataset, "bcphilic_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("bcphilic_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 14), column_blocking, i)
     enddo
 
     call read_data(dataset, "omphobic_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("omphobic_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 15), column_blocking, i)
     enddo
 
     call read_data(dataset, "omphilic_concentration", buffer3d_lay, unlim_dim_level=time_level)
+    call override_data("omphilic_concentration", buffer3d_lay, time_level, atm(1)%domain)
     do i = 1, num_blocks
       call block_data_3d(buffer3d_lay, atm(i)%aerosols(:, :, :, 16), column_blocking, i)
     enddo
@@ -490,6 +611,74 @@ subroutine read_time_slice(atm, time_level, column_blocking)
   call close_file(dataset)
   deallocate(buffer2d, buffer3d_lay, buffer3d_lev)
 end subroutine read_time_slice
+
+
+subroutine override_data_1d(name, buffer, time_level, domain)
+
+  character(len=*), intent(in) :: name
+  real, dimension(:), intent(inout) :: buffer
+  integer, intent(in) :: time_level
+  type(domain2d), intent(in) :: domain !< 2d domain.
+
+  type(FmsNetcdfDomainFile_t) :: dataset
+
+  if (trim(override_variable) .ne. trim(name)) return
+  if (.not. open_file(dataset, override_path, "read", domain)) then
+    call error_mesg("override_data_1d", "cannot find "//trim(override_path)//".", fatal)
+  endif
+  call register_axis(dataset, "grid_xt", "x")
+  call register_axis(dataset, "grid_yt", "y")
+  call read_data(dataset, name, buffer(:), unlim_dim_level=time_level)
+  call close_file(dataset)
+end subroutine override_data_1d
+
+
+subroutine override_data_2d(name, buffer, time_level, domain)
+
+  character(len=*), intent(in) :: name
+  real, dimension(:, :), intent(inout) :: buffer
+  integer, intent(in) :: time_level
+  type(domain2d), intent(in) :: domain !< 2d domain.
+
+  type(FmsNetcdfDomainFile_t) :: dataset
+
+  if (trim(override_variable) .ne. trim(name)) return
+  if (.not. open_file(dataset, override_path, "read", domain)) then
+    call error_mesg("override_data_2d", "cannot find "//trim(override_path)//".", fatal)
+  endif
+  call register_axis(dataset, "grid_xt", "x")
+  call register_axis(dataset, "grid_yt", "y")
+  call read_data(dataset, name, buffer, unlim_dim_level=time_level)
+  call close_file(dataset)
+end subroutine override_data_2d
+
+
+subroutine override_data_3d(name, buffer, time_level, domain)
+
+  character(len=*), intent(in) :: name
+  real, dimension(:, :, :), intent(inout) :: buffer
+  integer, intent(in) :: time_level
+  type(domain2d), intent(in) :: domain !< 2d domain.
+
+  integer, dimension(3) :: count_
+  type(FmsNetcdfDomainFile_t) :: dataset
+  integer, dimension(3) :: start
+
+  if (trim(override_variable) .ne. trim(name)) return
+  if (override_z_lower .lt. 0 .or. override_z_upper .lt. 0) then
+    call error_mesg("override_data_3d", "you must set the overrize z limits.", fatal)
+  endif
+  if (.not. open_file(dataset, override_path, "read", domain)) then
+    call error_mesg("override_data_3d", "cannot find "//trim(override_path)//".", fatal)
+  endif
+  call register_axis(dataset, "grid_xt", "x")
+  call register_axis(dataset, "grid_yt", "y")
+  start = [1, 1, override_z_lower]
+  count_ = [size(buffer, 1), size(buffer, 2), override_z_upper - override_z_lower + 1]
+  call read_data(dataset, name, buffer, unlim_dim_level=time_level, corner=start, &
+                 edge_lengths=count_)
+  call close_file(dataset)
+end subroutine override_data_3d
 
 
 subroutine block_data_2d(src, dest, column_blocking, block_)

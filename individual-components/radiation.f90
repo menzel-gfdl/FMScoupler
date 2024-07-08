@@ -245,7 +245,10 @@ do t = 1, atm(1)%num_times
   !Write out diagnostics.
   call diag_manager_set_time_end(time)
   call diag_send_complete(time)
-  time = time_next
+
+  if (t .lt. atm(1)%num_times) then
+    time = time_next
+  endif
 enddo
 
 !Clean up.
@@ -468,7 +471,7 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                                   column_blocking%ibe(block_) - column_blocking%isc + 1, &
                                                   column_blocking%jbs(block_) - column_blocking%jsc + 1, &
                                                   column_blocking%jbe(block_) - column_blocking%jsc + 1, &
-                                                  block_, atm%daylight_fraction)
+                                                  block_)
   call mpp_clock_end(aerosol_optics_clock)
   allocate(buffer(num_lon, num_lat, num_layers))
   do i = 1, size(radiation_context%aerosol_optics%family)
