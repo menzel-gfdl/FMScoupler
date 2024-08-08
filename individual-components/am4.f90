@@ -123,11 +123,13 @@ logical :: clearsky = .false.
 integer, dimension(2) :: io_layout = (/1, 1/)
 integer, dimension(2) :: layout = (/0, 0/)
 character(len=256) :: override_path = "none"
-character(len=64) :: override_variable = "none"
+character(len=64), dimension(20) :: override_variables = &
+  ["none", "none", "none", "none", "none", "none", "none", "none", "none", "none", &
+   "none", "none", "none", "none", "none", "none", "none", "none", "none", "none"]
 integer :: override_z_lower = -1
 integer :: override_z_upper = -1
 namelist /am4_nml/ atmos_path, cleansky, clearsky, io_layout, layout, &
-                   override_path, override_variable, override_z_lower, &
+                   override_path, override_variables, override_z_lower, &
                    override_z_upper
 
 
@@ -153,7 +155,7 @@ subroutine create_atmosphere(atm, column_blocking, nxblocks, nyblocks)
   type(FmsNetcdfDomainFile_t) :: dataset
   integer, dimension(4) :: dim_sizes
   logical :: block_flag
-  integer :: err, i, iec, ierr, isc, jec, jsc, num_blocks, nx, ny
+  integer :: err, i, iec, ierr, isc, j, jec, jsc, num_blocks, nx, ny
   type(domain2d), pointer :: io_domain
   type(FmsNetcdfFile_t) :: tilefile
 
@@ -162,15 +164,19 @@ subroutine create_atmosphere(atm, column_blocking, nxblocks, nyblocks)
 
   !Sanity checks.
   if (trim(override_path) .ne. "none") then
-    do i = 1, size(valid_names)
-      if (trim(override_variable) .eq. trim(valid_names(i))) then
-        exit
+    do j = 1, size(override_variables)
+      if (trim(override_variables(j)) .ne. "none") then
+        do i = 1, size(valid_names)
+          if (trim(override_variables(j)) .eq. trim(valid_names(i))) then
+            exit
+          endif
+        enddo
+        if (i .gt. size(valid_names)) then
+          call error_mesg("create_atmosphere", &
+                          "cannot find override variable "//trim(override_variables(j))//".", fatal)
+        endif
       endif
     enddo
-    if (i .gt. size(valid_names)) then
-      call error_mesg("create_atmosphere", &
-                      "cannot find override variable "//trim(override_variable)//".", fatal)
-    endif
   endif
 
   !Open the *.tile1.nc file and get the longitude and latitude sizes.
@@ -621,8 +627,20 @@ subroutine override_data_1d(name, buffer, time_level, domain)
   type(domain2d), intent(in) :: domain !< 2d domain.
 
   type(FmsNetcdfDomainFile_t) :: dataset
+  integer :: i
 
-  if (trim(override_variable) .ne. trim(name)) return
+  do i = 1, size(override_variables)
+    if (trim(override_variables(i)) .eq. "none") then
+      !Return once the first "none" is found.
+       return
+    endif
+    if (trim(override_variables(i)) .eq. trim(name)) then
+      exit
+    endif
+  enddo
+  if (i .gt. size(override_variables)) then
+    return
+  endif
   if (.not. open_file(dataset, override_path, "read", domain)) then
     call error_mesg("override_data_1d", "cannot find "//trim(override_path)//".", fatal)
   endif
@@ -641,8 +659,20 @@ subroutine override_data_2d(name, buffer, time_level, domain)
   type(domain2d), intent(in) :: domain !< 2d domain.
 
   type(FmsNetcdfDomainFile_t) :: dataset
+  integer :: i
 
-  if (trim(override_variable) .ne. trim(name)) return
+  do i = 1, size(override_variables)
+    if (trim(override_variables(i)) .eq. "none") then
+      !Return once the first "none" is found.
+       return
+    endif
+    if (trim(override_variables(i)) .eq. trim(name)) then
+      exit
+    endif
+  enddo
+  if (i .gt. size(override_variables)) then
+    return
+  endif
   if (.not. open_file(dataset, override_path, "read", domain)) then
     call error_mesg("override_data_2d", "cannot find "//trim(override_path)//".", fatal)
   endif
@@ -662,9 +692,21 @@ subroutine override_data_3d(name, buffer, time_level, domain)
 
   integer, dimension(3) :: count_
   type(FmsNetcdfDomainFile_t) :: dataset
+  integer :: i
   integer, dimension(3) :: start
 
-  if (trim(override_variable) .ne. trim(name)) return
+  do i = 1, size(override_variables)
+    if (trim(override_variables(i)) .eq. "none") then
+      !Return once the first "none" is found.
+       return
+    endif
+    if (trim(override_variables(i)) .eq. trim(name)) then
+      exit
+    endif
+  enddo
+  if (i .gt. size(override_variables)) then
+    return
+  endif
   if (override_z_lower .lt. 0 .or. override_z_upper .lt. 0) then
     call error_mesg("override_data_3d", "you must set the overrize z limits.", fatal)
   endif
