@@ -690,6 +690,7 @@ subroutine override_data_3d(name, buffer, time_level, domain)
   integer, intent(in) :: time_level
   type(domain2d), intent(in) :: domain !< 2d domain.
 
+  real, dimension(:, :, :), allocatable :: override_buffer
   integer, dimension(3) :: count_
   type(FmsNetcdfDomainFile_t) :: dataset
   integer :: i
@@ -715,11 +716,11 @@ subroutine override_data_3d(name, buffer, time_level, domain)
   endif
   call register_axis(dataset, "grid_xt", "x")
   call register_axis(dataset, "grid_yt", "y")
-  start = [1, 1, override_z_lower]
-  count_ = [size(buffer, 1), size(buffer, 2), override_z_upper - override_z_lower + 1]
-  call read_data(dataset, name, buffer, unlim_dim_level=time_level, corner=start, &
-                 edge_lengths=count_)
+  allocate(override_buffer(size(buffer, 1), size(buffer, 2), size(buffer, 3)))
+  call read_data(dataset, name, override_buffer, unlim_dim_level=time_level)
   call close_file(dataset)
+  buffer(:, :, override_z_lower:override_z_upper) = override_buffer(:, :, override_z_lower:override_z_upper)
+  deallocate(override_buffer)
 end subroutine override_data_3d
 
 
