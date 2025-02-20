@@ -14,6 +14,7 @@ use fms_mod, only: check_nml_error, clock_loop, error_mesg, fatal, fms_end, fms_
 use get_cal_time_mod, only: get_cal_time
 use gfdl_fluxes, only: BroadbandFluxes
 use grid2_mod, only: grid_end, grid_init
+use mo_rte_kind, only: wp
 use mpp_domains_mod, only: domain2d, mpp_get_compute_domain
 use mpp_mod, only: mpp_clock_set_grain
 use physics_radiation_exch_mod, only: clouds_from_moist_block_type
@@ -60,17 +61,20 @@ integer :: num_lat
 integer :: num_layers
 integer :: num_levels
 integer :: num_lon
+real(kind=wp), dimension(:, :), allocatable :: olr_integral
 type(RadiationContext) :: radiation_context
-type(time_type) :: time
-type(time_type) :: time_next
-type(time_type) :: timestep
 integer :: shortwave_axis_id
 real, dimension(:,:), allocatable :: shortwave_band_limits
 type(SolarSpectrum) :: solar_flux_spectrum
 type(SolarConstant) :: solar_flux_constant
 real :: surface_albedo_weight !Weighting needed to combine "nir" and "vis" albedo values in
                               !in the band that contains the infrared cut-off.
+real(kind=wp), dimension(:, :), allocatable :: swabs_integral
 integer :: t
+type(time_type) :: time
+type(time_type) :: time_next
+type(time_type) :: timestep
+
 
 !MPP timers.
 integer :: aerosol_optics_clock
@@ -177,6 +181,10 @@ num_levels = num_layers + 1
 !Initialize diag_manager.
 call get_date(time, date(1), date(2), date(3), date(4), date(5), date(6))
 call diag_manager_init(time_init=date)
+num_lon = column_blocking%ibe(num_blocks) - column_blocking%ibs(1) + 1
+num_lat = column_blocking%jbe(num_blocks) - column_blocking%jbs(1) + 1
+allocate(olr_integral(num_lon, num_lat))
+allocate(swabs_integral(num_lon, num_lat))
 
 !Initialize the radiation object.
 call radiation_context%create(num_columns, num_layers, num_blocks, solar_flux_spectrum%grid, &
@@ -255,7 +263,8 @@ do t = 1, atm(1)%num_times
                           aerosol_optics_clock, cloud_optics_clock, flux_solver_clock, &
                           gas_optics_clock, radiation_driver_clock, h2o, o3, last_infrared_band, &
                           aerosol_species_diags, cloud_diags, flux_diags, time, time_next, solar_flux_constant, &
-                          surface_albedo_weight, all_, clean, clean_clear, clear)
+                          surface_albedo_weight, all_, clean, clean_clear, clear, &
+                          olr_integral, swabs_integral)
   enddo
 
   !Write out diagnostics.
@@ -272,6 +281,8 @@ if (allocated(aerosol_species_diags)) then
 endif
 call random_number_streams_end()
 call diag_manager_end(time)
+deallocate(olr_integral)
+deallocate(swabs_integral)
 call radiation_context%destroy()
 do i = 1, num_blocks
   call destroy_atmosphere(atm(i))
@@ -288,7 +299,8 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                             aerosol_optics_clock, cloud_optics_clock, flux_solver_clock, &
                             gas_optics_clock, radiation_driver_clock, h2o, o3, last_infrared_band, &
                             aerosol_species_diags, cloud_diags, flux_diags, time, time_next, solar_flux_constant, &
-                            surface_albedo_weight, all_, clean, clean_clear, clear)
+                            surface_albedo_weight, all_, clean, clean_clear, clear, &
+                            olr_integral, swabs_integral)
 
   type(RadiationContext), intent(inout) :: radiation_context
   type(Atmosphere_t), intent(in), target :: atm
@@ -314,6 +326,8 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
   integer, intent(in) :: clean
   integer, intent(in) :: clean_clear
   integer, intent(in) :: clear
+  real(kind=wp), dimension(:, :), intent(inout) :: olr_integral
+  real(kind=wp), dimension(:, :), intent(inout) :: swabs_integral
 
   integer :: band, column, i, n, num_bands, num_columns, num_lat, num_levels, num_lon, s
   real, dimension(:, :, :), allocatable :: aerosol_relative_humidity
@@ -568,7 +582,10 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                          level_pressure, num_lon, num_lat, &
                                          column_blocking%ibs(block_) - column_blocking%isc + 1, &
                                          column_blocking%jbs(block_) - column_blocking%jsc + 1, &
-                                         1, time_next, flux_ratio)
+                                         1, time_next, flux_ratio, clean_clear, &
+                                         olr_integral, swabs_integral, &
+                                         column_blocking%ibe(block_) - column_blocking%isc + 1, &
+                                         column_blocking%jbe(block_) - column_blocking%jsc + 1)
 
   !Clean sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clean, block_)
@@ -585,7 +602,10 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                    level_pressure, num_lon, num_lat, &
                                    column_blocking%ibs(block_) - column_blocking%isc + 1, &
                                    column_blocking%jbs(block_) - column_blocking%jsc + 1, &
-                                   1, time_next, flux_ratio)
+                                   1, time_next, flux_ratio, clean, &
+                                   olr_integral, swabs_integral, &
+                                   column_blocking%ibe(block_) - column_blocking%isc + 1, &
+                                   column_blocking%jbe(block_) - column_blocking%jsc + 1)
 
   !Clear sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, clear, block_)
@@ -602,7 +622,10 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                    level_pressure, num_lon, num_lat, &
                                    column_blocking%ibs(block_) - column_blocking%isc + 1, &
                                    column_blocking%jbs(block_) - column_blocking%jsc + 1, &
-                                   1, time_next, flux_ratio)
+                                   1, time_next, flux_ratio, clear, &
+                                   olr_integral, swabs_integral, &
+                                   column_blocking%ibe(block_) - column_blocking%isc + 1, &
+                                   column_blocking%jbe(block_) - column_blocking%jsc + 1)
 
   !All sky.
   call radiation_context%calculate_longwave_fluxes(surface_emissivity, all_, block_)
@@ -619,7 +642,11 @@ subroutine radiation_scheme(radiation_context, atm, column_blocking, num_layers,
                                   level_pressure, num_lon, num_lat, &
                                   column_blocking%ibs(block_) - column_blocking%isc + 1, &
                                   column_blocking%jbs(block_) - column_blocking%jsc + 1, &
-                                  1, time_next, flux_ratio)
+                                  1, time_next, flux_ratio, all_, &
+                                  olr_integral, swabs_integral, &
+                                  column_blocking%ibe(block_) - column_blocking%isc + 1, &
+                                  column_blocking%jbe(block_) - column_blocking%jsc + 1)
+
   call mpp_clock_end(flux_solver_clock)
   deallocate(diffuse_surface_albedo, direct_surface_albedo)
   deallocate(longwave_gpoint_limits, shortwave_gpoint_limits)
